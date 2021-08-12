@@ -30,3 +30,6 @@ bin/source: build/source.o build/TaxiCab.o build/BinSemaphores.o $(COMMON_DEPS)
 clean:
 	$(RM) build/*
 	$(RM) bin/*
+
+run: all
+	./bin/master
