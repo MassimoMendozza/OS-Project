@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include "TaxiCab.h"
 
 #ifndef SO_WIDTH
 #define SO_WIDTH 100
@@ -37,7 +38,8 @@ int SO_TIMENSEC_MIN = -1;
 int SO_TIMENSEC_MAX = -1;
 int SO_TIMEOUT = -1;
 int SO_DURATION = -1;
-*mapCell readConfig(char* configPath){
+
+*masterMap readConfig(char* configPath){
     /*
     Parsing config file
     */
