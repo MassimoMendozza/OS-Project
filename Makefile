@@ -28,8 +28,8 @@ bin/source: build/source.o build/TaxiCab.o build/BinSemaphores.o $(COMMON_DEPS)
 	$(CC) -o bin/source build/source.o $(COMMON_BUILD_DEPS)
 
 clean:
-	$(RM) build/*
-	$(RM) bin/*
+	$(RM) -r -d build/
+	$(RM) -r -d bin/
 
 run: all
 	./bin/master

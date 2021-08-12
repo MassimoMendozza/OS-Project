@@ -15,7 +15,7 @@ typedef struct _taxi
 
 typedef struct _mapCell
 {
-	int maxElements, currentElements, holdingTime;
+	int maxElements, currentElements, holdingTime, cantPutAnHole;
 	taxi **drivers;
 	person **clients;
 	/*semaphore of the cell*/

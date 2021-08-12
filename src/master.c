@@ -145,7 +145,80 @@ void initializeMapCells(masterMap *map)
             map->map[x][y]->maxElements = randFromRange(map->SO_CAP_MIN, map->SO_CAP_MAX);
             map->map[x][y]->holdingTime = randFromRange(map->SO_TIMENSEC_MIN, map->SO_TIMENSEC_MAX);
             map->map[x][y]->currentElements = 0;
+            map->map[x][y]->cantPutAnHole = 0;
         }
+    }
+}
+
+/*
+    createHoles
+    Takes random x and y and checks if the cell [x][y] is eligible for a hole.
+    If not we scan the matrix linearly in search of the first eligible cell.
+    Then we get back and make the whole 3x3 area around the hole ineligible to get a hole.
+
+    The mechanism for linear scan is:
+        first we put as limit the end of the matrix
+        then we scan:
+            if we find a cell then we put the current indexes as the limits
+            to get out of the three cycles and then we make x and y the top left corner
+            of the new [a][b] cell's area
+            if we do not find the cell from [x][y] to the end of the matrix we'll end up likely
+            with a == SO_WIDTH, a sort of checkpoint that indicates that we reached the end of 
+            the two cycles, at this point we need to check the part of the matrix before [x][y].
+            We put a and b to 0 and put the limit as the original x and y, now we must find the 
+            eligible cell, if not the configuration cannot go ahead and we should retry from the beginning;
+*/
+
+void createHoles(masterMap *map)
+{
+    int a, b, c, x, y;
+    for (c = 0; c < map->SO_HOLES; c++)
+    {
+        x = randFromRange(0, map->SO_WIDTH - 1) - 1;
+        y = randFromRange(0, map->SO_HEIGHT - 1) - 1;
+        if (map->map[x + 1][y + 1]->cantPutAnHole)
+        {
+            a = x + 1;
+            b = y + 1;
+            int limitx, limity;
+            limitx = map->SO_WIDTH;
+            limity = map->SO_HEIGHT;
+            while (a < limitx)
+            {
+                for (; a < limitx; a++)
+                {
+                    for (; b < limity; b++)
+                    {
+                        if (map->map[a][b]->cantPutAnHole)
+                        {
+                            limitx = a;
+                            limity = b;
+                            x = a - 1;
+                            y = b - 1;
+                        }
+                    }
+                }
+                if (a == map->SO_WIDTH)
+                {
+                    limitx = x + 1;
+                    limity = y + 1;
+                    a = b = 0;
+                }
+            }
+            if(a==limitx){
+                printf("BRUH");
+            }
+        }
+
+        printf("Hole in %d;%d; ", x + 1, y + 1);
+        for (a = 0; a < (x + 3) && a < map->SO_WIDTH; a++)
+        {
+            for (b = 0; b < (y + 3) && b < map->SO_HEIGHT; b++)
+            {
+                map->map[a][b]->cantPutAnHole = 1;
+            }
+        }
+        map->map[x + 1][y + 1]->maxElements = -1;
     }
 }
 
@@ -153,6 +226,7 @@ masterMap *mapFromConfig(char *configPath)
 {
     masterMap *map = readConfig(configPath);
     initializeMapCells(map);
+    createHoles(map);
     return map;
 }
 
