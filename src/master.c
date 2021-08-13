@@ -2,7 +2,10 @@
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
+#include <semaphore.h>
+#include <sys/shm.h>
 #include "TaxiCab.h"
+#include "BinSemaphores.h"
 
 #ifndef CONFIGFULLPATH
 #define CONFIGFULLPATH "./config"
@@ -16,6 +19,9 @@ FILE *config;
 char AttributeName[20];
 char EqualsPlaceHolder;
 int ParsedValue;
+
+int shmKey;
+int projID;
 
 /*
 Simulation parameter
@@ -146,6 +152,8 @@ void initializeMapCells(masterMap *map)
             map->map[x][y]->holdingTime = randFromRange(map->SO_TIMENSEC_MIN, map->SO_TIMENSEC_MAX);
             map->map[x][y]->currentElements = 0;
             map->map[x][y]->cantPutAnHole = 0;
+            map->map[x][y]->semID = semget(shmKey, 1, IPC_CREAT);
+            initSemAvailable(map->map[x][y]->semID, 1);
         }
     }
 }
@@ -172,6 +180,7 @@ void initializeMapCells(masterMap *map)
 void createHoles(masterMap *map)
 {
     int a, b, c, x, y;
+    printf("Creating %d holes...\n", map->SO_HOLES);
     for (c = 0; c < map->SO_HOLES; c++)
     {
         x = randFromRange(0, map->SO_WIDTH - 1) - 1;
@@ -205,12 +214,13 @@ void createHoles(masterMap *map)
                     a = b = 0;
                 }
             }
-            if(a==limitx){
-                printf("BRUH");
+            if (a == limitx)
+            {
+                printf("Cannot find a holes configuration with the given parameters, check your config parameters or try again.\nMaster program will now exit.");
+                exit(EXIT_FAILURE);
             }
         }
-
-        printf("Hole in %d;%d; ", x + 1, y + 1);
+        
         for (a = 0; a < (x + 3) && a < map->SO_WIDTH; a++)
         {
             for (b = 0; b < (y + 3) && b < map->SO_HEIGHT; b++)
@@ -220,6 +230,7 @@ void createHoles(masterMap *map)
         }
         map->map[x + 1][y + 1]->maxElements = -1;
     }
+    printf("\n");
 }
 
 masterMap *mapFromConfig(char *configPath)
@@ -249,6 +260,9 @@ int main(int argc, char *argv[])
         printf("Wrong number of parameters!\nusage: ./master pathToConfigFile\n");
         exit(EXIT_FAILURE);
     }
+
+    projID = rand();
+    shmKey = ftok(configPath, projID);
 
     masterMap *map = mapFromConfig(CONFIGFULLPATH);
 

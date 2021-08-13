@@ -18,7 +18,7 @@ typedef struct _mapCell
 	int maxElements, currentElements, holdingTime, cantPutAnHole;
 	taxi **drivers;
 	person **clients;
-	/*semaphore of the cell*/
+	int semID;
 } mapCell;
 
 typedef struct _masterMap
@@ -38,8 +38,8 @@ typedef struct _requestMessage
 } requestMessage;
 typedef struct _requests
 {
-	/*coda richieste
-	semaforo richieste*/
+	/*coda richieste*/
+	int semID;
 	int maxDone, maxAborted, maxProcessing, numDone, numAborted, numProcessing;
 	requestMessage **done, **aborted, **processing;
 } requests;
