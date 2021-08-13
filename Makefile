@@ -1,4 +1,4 @@
-CFLAGS 		= -g -O1 -std=c89 -pedantic -Wall -Wextra -Wpedantic -Wconversion
+CFLAGS 		= -g -std=c89 -pedantic -Wall -Wextra -Wpedantic -Wconversion
 COMMON_DEPS 	= src/*.h Makefile
 COMMON_BUILD_DEP = build/TaxiCab.o build/BinSemaphores.o
 BUILD_DIR = build
