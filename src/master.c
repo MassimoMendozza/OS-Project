@@ -147,13 +147,19 @@ void initializeMapCells(void *addrstart)
     {
         for (y = 0; y < map->SO_HEIGHT; y++)
         {
-            cells = ((addrstart + sizeof(masterMap) + sizeof(taxi[map->SO_TAXI]) + sizeof(person[map->SO_SOURCES])) + x * map->SO_HEIGHT + y);
+            cells = ((addrstart + sizeof(masterMap) + sizeof(taxi[map->SO_TAXI]) + sizeof(person[map->SO_SOURCES])) + (x * map->SO_HEIGHT + y)*sizeof(mapCell));
             cells->maxElements = randFromRange(map->SO_CAP_MIN, map->SO_CAP_MAX);
             cells->holdingTime = randFromRange(map->SO_TIMENSEC_MIN, map->SO_TIMENSEC_MAX);
             cells->currentElements = 0;
             cells->cantPutAnHole = 0;
             cells->semID = semget(shmKey, 1, IPC_CREAT);
             initSemAvailable(cells->semID, 1);
+
+            printf("[%d][%d] %d %d %d %d %d; ", x , y, cells->maxElements,cells->holdingTime,cells->currentElements,cells->cantPutAnHole,cells->semID);
+            
+            cells = ((addrstart + sizeof(masterMap) + sizeof(taxi[map->SO_TAXI]) + sizeof(person[map->SO_SOURCES])) + (x * map->SO_HEIGHT + y-1)*sizeof(mapCell));
+            
+            printf("[%d][%d] %d %d %d %d %d; \n", x , y-1, cells->maxElements,cells->holdingTime,cells->currentElements,cells->cantPutAnHole,cells->semID);
         }
     }
 }
@@ -181,6 +187,7 @@ void createHoles(void *addrstart)
 {
     int a, b, c, x, y;
     masterMap *map = addrstart;
+    mapCell *cells = (addrstart + sizeof(masterMap) + sizeof(taxi[map->SO_TAXI]) + sizeof(person[map->SO_SOURCES]));
     printf("The following parameters have been loaded:\n\tSO_WIDTH = %d\n\tSO_HEIGHT = %d\n\tSO_HOLES = %d\n\tSO_TOP_CELLS = %d\n\tSO_SOURCES = %d\n\tSO_CAP_MIN = %d\n\tSO_CAP_MAX = %d\n\tSO_TAXI = %d\n\tSO_TIMENSEC_MIN = %d\n\tSO_TIMENSEC_MAX = %d\n\tSO_TIMEOUT = %d\n\tSO_DURATION = %d\n\n", map->SO_WIDTH, map->SO_HEIGHT, map->SO_HOLES, map->SO_TOP_CELLS, map->SO_SOURCES, map->SO_CAP_MIN, map->SO_CAP_MAX, map->SO_TAXI, map->SO_TIMENSEC_MIN, map->SO_TIMENSEC_MAX, map->SO_TIMEOUT, map->SO_DURATION);
 
     printf("Creating %d holes...\n", map->SO_HOLES);
@@ -188,7 +195,8 @@ void createHoles(void *addrstart)
     {
         x = randFromRange(0, map->SO_WIDTH - 1) - 1;
         y = randFromRange(0, map->SO_HEIGHT - 1) - 1;
-        if (map->map[x + 1][y + 1]->cantPutAnHole)
+        cells = ((addrstart + sizeof(masterMap) + sizeof(taxi[map->SO_TAXI]) + sizeof(person[map->SO_SOURCES])) + (x + 1) * map->SO_HEIGHT + (y + 1));
+        if (cells->cantPutAnHole)
         {
             a = x + 1;
             b = y + 1;
@@ -201,7 +209,8 @@ void createHoles(void *addrstart)
                 {
                     for (; b < limity; b++)
                     {
-                        if (map->map[a][b]->cantPutAnHole)
+                        cells = ((addrstart + sizeof(masterMap) + sizeof(taxi[map->SO_TAXI]) + sizeof(person[map->SO_SOURCES])) + a * map->SO_HEIGHT + b);
+                        if (cells->cantPutAnHole)
                         {
                             limitx = a;
                             limity = b;
@@ -228,10 +237,14 @@ void createHoles(void *addrstart)
         {
             for (b = 0; b < (y + 3) && b < map->SO_HEIGHT; b++)
             {
-                map->map[a][b]->cantPutAnHole = 1;
+                cells = ((addrstart + sizeof(masterMap) + sizeof(taxi[map->SO_TAXI]) + sizeof(person[map->SO_SOURCES])) + a * map->SO_HEIGHT + b);
+                cells->cantPutAnHole = 1;
             }
         }
-        map->map[x + 1][y + 1]->maxElements = -1;
+        cells = ((addrstart + sizeof(masterMap) + sizeof(taxi[map->SO_TAXI]) + sizeof(person[map->SO_SOURCES])) + (x + 1) * map->SO_HEIGHT + (y + 1));
+
+        cells->maxElements = -1;
+
     }
     printf("\n");
 }
@@ -294,8 +307,5 @@ int main(int argc, char *argv[])
     shmKey = ftok(configPath, projID);
 
     masterMap *map = mapFromConfig(CONFIGFULLPATH);
-
-    printf("The following parameters have been loaded:\n\tSO_WIDTH = %d\n\tSO_HEIGHT = %d\n\tSO_HOLES = %d\n\tSO_TOP_CELLS = %d\n\tSO_SOURCES = %d\n\tSO_CAP_MIN = %d\n\tSO_CAP_MAX = %d\n\tSO_TAXI = %d\n\tSO_TIMENSEC_MIN = %d\n\tSO_TIMENSEC_MAX = %d\n\tSO_TIMEOUT = %d\n\tSO_DURATION = %d\n\n", map->SO_WIDTH, map->SO_HEIGHT, map->SO_HOLES, map->SO_TOP_CELLS, map->SO_SOURCES, map->SO_CAP_MIN, map->SO_CAP_MAX, map->SO_TAXI, map->SO_TIMENSEC_MIN, map->SO_TIMENSEC_MAX, map->SO_TIMEOUT, map->SO_DURATION);
-
     return EXIT_SUCCESS;
 }
