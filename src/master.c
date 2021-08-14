@@ -4,7 +4,7 @@
 #include <time.h>
 #include <semaphore.h>
 #include <sys/shm.h>
-#include "TaxiCab.h"
+#include "shmUtils.h"
 #include "BinSemaphores.h"
 
 #ifndef CONFIGFULLPATH
@@ -138,7 +138,7 @@ masterMap *readConfig(char *configPath)
     return newMap;
 }
 
-void initializeMapCells(void *addrstart)
+void initializeMapCells()
 {
     int x, y;
     masterMap *map = addrstart;
@@ -147,7 +147,7 @@ void initializeMapCells(void *addrstart)
     {
         for (y = 0; y < map->SO_HEIGHT; y++)
         {
-            cells = ((addrstart + sizeof(masterMap) + sizeof(taxi[map->SO_TAXI]) + sizeof(person[map->SO_SOURCES])) + (x * map->SO_HEIGHT + y)*sizeof(mapCell));
+            cells = getMapCellAt(x, y);
             cells->maxElements = randFromRange(map->SO_CAP_MIN, map->SO_CAP_MAX);
             cells->holdingTime = randFromRange(map->SO_TIMENSEC_MIN, map->SO_TIMENSEC_MAX);
             cells->currentElements = 0;
@@ -155,12 +155,7 @@ void initializeMapCells(void *addrstart)
             cells->semID = semget(shmKey, 1, IPC_CREAT);
             initSemAvailable(cells->semID, 1);
 
-            printf("[%d][%d] %d %d %d %d %d; ", x , y, cells->maxElements,cells->holdingTime,cells->currentElements,cells->cantPutAnHole,cells->semID);
-            
-            cells = ((addrstart + sizeof(masterMap) + sizeof(taxi[map->SO_TAXI]) + sizeof(person[map->SO_SOURCES])) + (x * map->SO_HEIGHT + y-1)*sizeof(mapCell));
-            
-            printf("[%d][%d] %d %d %d %d %d; \n", x , y-1, cells->maxElements,cells->holdingTime,cells->currentElements,cells->cantPutAnHole,cells->semID);
-        }
+            }
     }
 }
 
@@ -183,11 +178,11 @@ void initializeMapCells(void *addrstart)
             eligible cell, if not the configuration cannot go ahead and we should retry from the beginning;
 */
 
-void createHoles(void *addrstart)
+void createHoles()
 {
     int a, b, c, x, y;
-    masterMap *map = addrstart;
-    mapCell *cells = (addrstart + sizeof(masterMap) + sizeof(taxi[map->SO_TAXI]) + sizeof(person[map->SO_SOURCES]));
+    masterMap *map = getMap();
+    mapCell *cells;
     printf("The following parameters have been loaded:\n\tSO_WIDTH = %d\n\tSO_HEIGHT = %d\n\tSO_HOLES = %d\n\tSO_TOP_CELLS = %d\n\tSO_SOURCES = %d\n\tSO_CAP_MIN = %d\n\tSO_CAP_MAX = %d\n\tSO_TAXI = %d\n\tSO_TIMENSEC_MIN = %d\n\tSO_TIMENSEC_MAX = %d\n\tSO_TIMEOUT = %d\n\tSO_DURATION = %d\n\n", map->SO_WIDTH, map->SO_HEIGHT, map->SO_HOLES, map->SO_TOP_CELLS, map->SO_SOURCES, map->SO_CAP_MIN, map->SO_CAP_MAX, map->SO_TAXI, map->SO_TIMENSEC_MIN, map->SO_TIMENSEC_MAX, map->SO_TIMEOUT, map->SO_DURATION);
 
     printf("Creating %d holes...\n", map->SO_HOLES);
@@ -195,7 +190,7 @@ void createHoles(void *addrstart)
     {
         x = randFromRange(0, map->SO_WIDTH - 1) - 1;
         y = randFromRange(0, map->SO_HEIGHT - 1) - 1;
-        cells = ((addrstart + sizeof(masterMap) + sizeof(taxi[map->SO_TAXI]) + sizeof(person[map->SO_SOURCES])) + (x + 1) * map->SO_HEIGHT + (y + 1));
+        cells = getMapCellAt(x + 1, y + 1);
         if (cells->cantPutAnHole)
         {
             a = x + 1;
@@ -209,7 +204,7 @@ void createHoles(void *addrstart)
                 {
                     for (; b < limity; b++)
                     {
-                        cells = ((addrstart + sizeof(masterMap) + sizeof(taxi[map->SO_TAXI]) + sizeof(person[map->SO_SOURCES])) + a * map->SO_HEIGHT + b);
+                        cells = getMapCellAt(a, b);
                         if (cells->cantPutAnHole)
                         {
                             limitx = a;
@@ -237,49 +232,27 @@ void createHoles(void *addrstart)
         {
             for (b = 0; b < (y + 3) && b < map->SO_HEIGHT; b++)
             {
-                cells = ((addrstart + sizeof(masterMap) + sizeof(taxi[map->SO_TAXI]) + sizeof(person[map->SO_SOURCES])) + a * map->SO_HEIGHT + b);
+                cells = getMapCellAt(a, b);
                 cells->cantPutAnHole = 1;
             }
         }
-        cells = ((addrstart + sizeof(masterMap) + sizeof(taxi[map->SO_TAXI]) + sizeof(person[map->SO_SOURCES])) + (x + 1) * map->SO_HEIGHT + (y + 1));
-
+        cells = getMapCellAt(x+1, y+1);
         cells->maxElements = -1;
-
     }
     printf("\n");
-}
-
-void putMapInShm(masterMap *map, void *addrstart)
-{
-    masterMap *shmMap = addrstart;
-    shmMap->SO_CAP_MAX = map->SO_CAP_MAX;
-    shmMap->SO_CAP_MIN = map->SO_CAP_MIN;
-    shmMap->SO_DURATION = map->SO_DURATION;
-    shmMap->SO_HEIGHT = map->SO_HEIGHT;
-    shmMap->SO_HOLES = map->SO_HOLES;
-    shmMap->SO_SOURCES = map->SO_SOURCES;
-    shmMap->SO_TAXI = map->SO_TAXI;
-    shmMap->SO_TIMENSEC_MAX = map->SO_TIMENSEC_MAX;
-    shmMap->SO_TIMENSEC_MIN = map->SO_TIMENSEC_MIN;
-    shmMap->SO_TIMEOUT = map->SO_TIMEOUT;
-    shmMap->SO_TOP_CELLS = map->SO_TOP_CELLS;
-    shmMap->SO_WIDTH = map->SO_WIDTH;
 }
 
 masterMap *mapFromConfig(char *configPath)
 {
     masterMap *map = readConfig(configPath);
-    int shmID = shmget(shmKey, sizeof(masterMap) + sizeof(taxi[map->SO_TAXI]) + sizeof(person[map->SO_SOURCES]) + sizeof(mapCell[map->SO_WIDTH][map->SO_HEIGHT]) + sizeof(taxi[map->SO_WIDTH][map->SO_HEIGHT][map->SO_CAP_MAX]), IPC_CREAT | 0666);
-    printf("%d\n", sizeof(masterMap) + sizeof(taxi[map->SO_TAXI]) + sizeof(person[map->SO_SOURCES]) + sizeof(mapCell[map->SO_WIDTH][map->SO_HEIGHT]) + sizeof(taxi[map->SO_WIDTH][map->SO_HEIGHT][map->SO_CAP_MAX]));
+    int shmID = allocateShm(shmKey, map);
     void *addrstart = shmat(shmID, NULL, 0);
 
-    putMapInShm(map, addrstart);
-    /*
-        Allocates in shared memory the necessary space to memorize the whole structure like this:
-        || masterMap | taxi[map->SO_TAXI] | person[map->SO_SOURCES] | mapCell[map->SO_WIDTH][map->SO_HEIGHT] | taxi[map->SO_WIDTH][map->SO_HEIGHT][map->SO_CAP_MAX] ||
-    */
-    initializeMapCells(addrstart);
-    createHoles(addrstart);
+    setAddrstart(addrstart);
+    putMapInShm(map);
+
+    initializeMapCells();
+    createHoles();
     return map;
 }
 
