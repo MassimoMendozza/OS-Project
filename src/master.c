@@ -292,17 +292,27 @@ void beFruitful()
     }
 }
 
-void bornATaxi(int a)
+void bornATaxi(int myNumber)
 {
-    printf("Taxi n%d with pid %d\n", a, getpid());
+    printf("Taxi n%d with pid %d\n", myNumber, getpid());
+    taxi *myself = getTaxi(myNumber);
+    myself->processid = getpid();
+    myself->number = myNumber;
+    myself->client = NULL;
+    myself->distanceDone = 0;
+    myself->ridesDone = 0;
 }
-void bornAClient(int a)
+void bornAClient(int myNumber)
 {
-    printf("Client n%d with pid %d\n", a, getpid());
+    printf("Client n%d with pid %d\n", myNumber, getpid());
+    person *myself = getPerson(myNumber);
+    myself->processid = getpid();
+    myself->number = myNumber;
+    myself->isOnTaxi = 0;
 }
 void bornAMaster()
 {
-    printf("\n\nI'm the master\n\n");
+    printf("\n\nMaster's speaking\n\n");
 }
 
 int main(int argc, char *argv[])

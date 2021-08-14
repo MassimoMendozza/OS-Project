@@ -38,3 +38,12 @@ masterMap *getMap(){
 mapCell *getMapCellAt(int x, int y){
     return ((addrstart + sizeof(masterMap) + sizeof(taxi[getMap()->SO_TAXI]) + sizeof(person[getMap()->SO_SOURCES])) + (x * getMap()->SO_HEIGHT + y)*sizeof(mapCell));
 }
+
+
+taxi *getTaxi(int taxiNumber){
+    return (addrstart+ sizeof(masterMap)+taxiNumber*sizeof(taxi));
+}
+
+person *getPerson(int personNumber){
+    return (addrstart + sizeof(masterMap) + sizeof(taxi[getMap()->SO_TAXI]) + personNumber*sizeof(person));
+}

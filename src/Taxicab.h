@@ -3,12 +3,14 @@
 typedef struct _person
 {
 	pid_t processid;
+	int number;
 	int isOnTaxi;
 } person;
 
 typedef struct _taxi
 {
 	pid_t processid;
+	int number;
 	int distanceDone, ridesDone;
 	person *client;
 } taxi;
