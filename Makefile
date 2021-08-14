@@ -1,4 +1,5 @@
 CFLAGS 		= -g -std=c89 -pedantic -Wall -Wextra -Wpedantic -Wconversion
+LIBRARY_DEPS = -lpthread -lrt
 COMMON_DEPS 	= src/*.h Makefile
 COMMON_BUILD_DEP = build/TaxiCab.o build/BinSemaphores.o
 BUILD_DIR = build
@@ -19,13 +20,13 @@ build/%.o: src/%.c $(COMMON_DEPS)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 bin/master: build/master.o build/TaxiCab.o build/BinSemaphores.o $(COMMON_DEPS)
-	$(CC) -o bin/master build/master.o $(COMMON_BUILD_DEPS)
+	$(CC) -o bin/master build/master.o $(COMMON_BUILD_DEPS)  $(LIBRARY_DEPS)
 
 bin/taxi: build/taxi.o build/TaxiCab.o build/BinSemaphores.o $(COMMON_DEPS)
-	$(CC) -o bin/taxi build/taxi.o $(COMMON_BUILD_DEPS)
+	$(CC) -o bin/taxi build/taxi.o $(COMMON_BUILD_DEPS)  $(LIBRARY_DEPS)
 
 bin/source: build/source.o build/TaxiCab.o build/BinSemaphores.o $(COMMON_DEPS)
-	$(CC) -o bin/source build/source.o $(COMMON_BUILD_DEPS)
+	$(CC) -o bin/source build/source.o $(COMMON_BUILD_DEPS)  $(LIBRARY_DEPS)
 
 clean:
 	$(RM) -r -d build/

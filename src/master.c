@@ -20,7 +20,7 @@ char AttributeName[20];
 char EqualsPlaceHolder;
 int ParsedValue;
 
-int shmKey;
+key_t shmKey;
 int projID;
 
 /*
@@ -142,7 +142,9 @@ void initializeMapCells()
 {
     int x, y;
     masterMap *map = addrstart;
-    mapCell *cells = (addrstart + sizeof(masterMap) + sizeof(taxi[map->SO_TAXI]) + sizeof(person[map->SO_SOURCES]));
+    mapCell *cells = map->map = getMapCellAt(0, 0);
+    map->cellsSemID = semget(shmKey, map->SO_HEIGHT * map->SO_WIDTH, IPC_CREAT | 0666);
+    initSemAvailable(map->cellsSemID, map->SO_HEIGHT * map->SO_WIDTH);
     for (x = 0; x < map->SO_WIDTH; x++)
     {
         for (y = 0; y < map->SO_HEIGHT; y++)
@@ -152,10 +154,7 @@ void initializeMapCells()
             cells->holdingTime = randFromRange(map->SO_TIMENSEC_MIN, map->SO_TIMENSEC_MAX);
             cells->currentElements = 0;
             cells->cantPutAnHole = 0;
-            cells->semID = semget(shmKey, 1, IPC_CREAT);
-            initSemAvailable(cells->semID, 1);
-
-            }
+        }
     }
 }
 
@@ -236,7 +235,7 @@ void createHoles()
                 cells->cantPutAnHole = 1;
             }
         }
-        cells = getMapCellAt(x+1, y+1);
+        cells = getMapCellAt(x + 1, y + 1);
         cells->maxElements = -1;
     }
     printf("\n");
@@ -253,7 +252,57 @@ masterMap *mapFromConfig(char *configPath)
 
     initializeMapCells();
     createHoles();
+
     return map;
+}
+
+void beFruitful()
+{
+    int a, shouldIBeATaxi, shouldIBeAClient;
+    masterMap *map;
+
+    map = getMap();
+
+    shouldIBeATaxi = shouldIBeAClient = 0;
+    for (a = 0; a < map->SO_TAXI; a++)
+    {
+        if (fork() == 0)
+        {
+            shouldIBeATaxi = 1;
+            bornATaxi(a);
+            a = map->SO_TAXI;
+        }
+    }
+    if (!shouldIBeATaxi)
+    {
+        for (a = 0; a < map->SO_SOURCES; a++)
+        {
+            if (fork() == 0)
+            {
+                shouldIBeAClient = 1;
+                bornAClient(a);
+                a = map->SO_SOURCES;
+            }
+        }
+    }
+
+    if (!shouldIBeAClient && !shouldIBeATaxi)
+    {
+        bornAMaster();
+    }
+}
+
+void bornATaxi(int a)
+{
+    printf("Taxi n%d with pid %d\n", a, getpid());
+}
+void bornAClient(int a)
+{
+    printf("Client n%d with pid %d\n", a, getpid());
+}
+void bornAMaster()
+{
+    printf("\n\nI'm the master\n\n");
 }
 
 int main(int argc, char *argv[])
@@ -280,5 +329,8 @@ int main(int argc, char *argv[])
     shmKey = ftok(configPath, projID);
 
     masterMap *map = mapFromConfig(CONFIGFULLPATH);
+
+    beFruitful();
+
     return EXIT_SUCCESS;
 }

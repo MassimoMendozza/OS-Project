@@ -18,12 +18,12 @@ typedef struct _mapCell
 	int maxElements, currentElements, holdingTime, cantPutAnHole;
 	taxi **drivers;
 	person **clients;
-	int semID;
 } mapCell;
 
 typedef struct _masterMap
 {
 	int SO_WIDTH, SO_HEIGHT, SO_HOLES, SO_TOP_CELLS, SO_SOURCES, SO_CAP_MIN, SO_CAP_MAX, SO_TAXI, SO_TIMENSEC_MIN, SO_TIMENSEC_MAX, SO_TIMEOUT, SO_DURATION;
+	int cellsSemID;
 	taxi **allDrivers;
 	person **allClients;
 	mapCell ***map;
