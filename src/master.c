@@ -4,8 +4,9 @@
 #include <time.h>
 #include <semaphore.h>
 #include <sys/shm.h>
-#include "shmUtils.h"
-#include "BinSemaphores.h"
+#include <errno.h>
+
+#include "TaxiCab.h"
 
 #ifndef CONFIGFULLPATH
 #define CONFIGFULLPATH "./config"
@@ -20,8 +21,12 @@ char AttributeName[20];
 char EqualsPlaceHolder;
 int ParsedValue;
 
-key_t shmKey;
+key_t ipcKey;
 int projID;
+
+masterMap *map;
+int shmID,msgID;
+void *addrstart;
 
 /*
 Simulation parameter
@@ -143,7 +148,7 @@ void initializeMapCells()
     int x, y;
     masterMap *map = addrstart;
     mapCell *cells = map->map = getMapCellAt(0, 0);
-    map->cellsSemID = semget(shmKey, map->SO_HEIGHT * map->SO_WIDTH, IPC_CREAT | 0666);
+    map->cellsSemID = semget(ipcKey, map->SO_HEIGHT * map->SO_WIDTH, IPC_CREAT | 0666);
     initSemAvailable(map->cellsSemID, map->SO_HEIGHT * map->SO_WIDTH);
     for (x = 0; x < map->SO_WIDTH; x++)
     {
@@ -244,8 +249,10 @@ void createHoles()
 masterMap *mapFromConfig(char *configPath)
 {
     masterMap *map = readConfig(configPath);
-    int shmID = allocateShm(shmKey, map);
-    void *addrstart = shmat(shmID, NULL, 0);
+
+    shmID = allocateShm(ipcKey, map);
+    msgID = msgget(ipcKey, IPC_CREAT | 0666);
+    addrstart = shmat(shmID, NULL, 0);
 
     setAddrstart(addrstart);
     putMapInShm(map);
@@ -292,27 +299,27 @@ void beFruitful()
     }
 }
 
-void bornATaxi(int myNumber)
-{
-    printf("Taxi n%d with pid %d\n", myNumber, getpid());
-    taxi *myself = getTaxi(myNumber);
-    myself->processid = getpid();
-    myself->number = myNumber;
-    myself->client = NULL;
-    myself->distanceDone = 0;
-    myself->ridesDone = 0;
-}
-void bornAClient(int myNumber)
-{
-    printf("Client n%d with pid %d\n", myNumber, getpid());
-    person *myself = getPerson(myNumber);
-    myself->processid = getpid();
-    myself->number = myNumber;
-    myself->isOnTaxi = 0;
-}
 void bornAMaster()
 {
     printf("\n\nMaster's speaking\n\n");
+
+    int a;
+    message kickoffMessage;
+
+    kickoffMessage.type=MSG_KICKOFF;
+    for(a=0; a<map->SO_TAXI; a++){
+        kickoffMessage.mtype=(long)(getTaxi(a)->processid);
+        if((msgsnd(msgID, &kickoffMessage,sizeof(kickoffMessage),  0))==-1){
+            printf("Can't send message to kickoff taxi n%d", getTaxi(a)->processid);
+        };
+    }
+    
+    for(a=0; a<map->SO_SOURCES; a++){
+        kickoffMessage.mtype=(long)(getPerson(a)->processid);
+        if((msgsnd(msgID, &kickoffMessage,sizeof(kickoffMessage), 0))==-1){
+            printf("Can't send message to kickoff taxi n%d", getPerson(a)->processid);
+        };
+    }
 }
 
 int main(int argc, char *argv[])
@@ -336,9 +343,9 @@ int main(int argc, char *argv[])
     }
 
     projID = rand();
-    shmKey = ftok(configPath, projID);
+    ipcKey = ftok(configPath, projID);
 
-    masterMap *map = mapFromConfig(CONFIGFULLPATH);
+    map = mapFromConfig(CONFIGFULLPATH);
 
     beFruitful();
 

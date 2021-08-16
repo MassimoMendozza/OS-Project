@@ -17,45 +17,41 @@
 
 
 
+
+
 int msgID;
-int myTaxiNumber;
+int myClientNumber;
 
-
-
-void bornATaxi(int myNumber)
+void bornAClient(int myNumber)
 {
-    myTaxiNumber = myNumber;/*ti amo <3*/
-
-    printf("Taxi n%d with pid %d\n", myNumber, getpid());
-
-    taxi *myself = getTaxi(myNumber);
+    printf("Client n%d with pid %d\n", myNumber, getpid());
+    person *myself = getPerson(myNumber);
     myself->processid = getpid();
     myself->number = myNumber;
-    myself->client = NULL;
-    myself->distanceDone = 0;
-    myself->ridesDone = 0;
+    myself->isOnTaxi = 0;
 
+    myClientNumber=myNumber;
+
+    
     message msgPlaceholder;
 
     /*
         Waiting the simulation kickoff
     */
 
-    if((msgrcv(msgID, &msgPlaceholder, sizeof(msgPlaceholder), getpid(),0))==-1){
+    if((msgrcv(msgID, &msgPlaceholder, sizeof(msgPlaceholder), (long)(myself->processid),0))==-1){
         printf("Qualcosa non va bro");
         exit(EXIT_FAILURE);
     }else{
         if(msgPlaceholder.type==MSG_KICKOFF){
             
-        taxiKickoff();
+        clientKickoff();
         }else{
             printf("%d\n", msgPlaceholder.type);
         }
     }
-
-
 }
 
-void taxiKickoff(){
-    printf("Yay, taxi n%d andato\n", myTaxiNumber);
+void clientKickoff(){
+    printf("ALLAAAAAAAAAh, cliente n%d andato\n", myClientNumber);
 }
