@@ -23,8 +23,8 @@ int myTaxiNumber;
 
 
 
-void bornATaxi(int myNumber)
-{
+void bornATaxi(int myNumber){
+    
     myTaxiNumber = myNumber;/*ti amo <3*/
 
     printf("Taxi n%d with pid %d\n", myNumber, getpid());

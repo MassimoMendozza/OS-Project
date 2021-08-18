@@ -3,14 +3,16 @@
 #include <sys/types.h>
 #define MSG_KICKOFF 0
 
-typedef struct _person
+
+typedef struct _person //oggetto persona
 {
 	int processid;
 	int number;
 	int isOnTaxi;
 } person;
 
-typedef struct _taxi
+
+typedef struct _taxi  //oggetto taxi
 {
 	int processid;
 	int number;
@@ -18,14 +20,16 @@ typedef struct _taxi
 	person *client;
 } taxi;
 
-typedef struct _mapCell
+
+typedef struct _mapCell  //oggetto mappa della città
 {
 	int maxElements, currentElements, holdingTime, cantPutAnHole;
 	taxi **drivers;
 	person **clients;
 } mapCell;
 
-typedef struct _masterMap
+
+typedef struct _masterMap //oggetto mappa città
 {
 	int SO_WIDTH, SO_HEIGHT, SO_HOLES, SO_TOP_CELLS, SO_SOURCES, SO_CAP_MIN, SO_CAP_MAX, SO_TAXI, SO_TIMENSEC_MIN, SO_TIMENSEC_MAX, SO_TIMEOUT, SO_DURATION;
 	int cellsSemID;
@@ -34,7 +38,8 @@ typedef struct _masterMap
 	mapCell ***map;
 } masterMap;
 
-typedef struct _message
+
+typedef struct _message //oggetto messaggio (?)
 {
 	long mtype;
 	int sourceX, sourceY, destX, destY;
@@ -42,11 +47,16 @@ typedef struct _message
 	int driverID;
 	int type;
 } message;
-typedef struct _requests
+
+
+typedef struct _requests //oggetto richiesta
 {
 	/*coda richieste*/
 	int semID;
 	int maxDone, maxAborted, maxProcessing, numDone, numAborted, numProcessing;
 	message **done, **aborted, **processing;
 } requests;
+
+
+
 #endif

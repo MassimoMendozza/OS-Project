@@ -5,8 +5,8 @@ void setAddrstart(void *start){
     addrstart = start;
 }
 
-void putMapInShm(masterMap *map)
-{
+void putMapInShm(masterMap *map){
+
     masterMap *shmMap = addrstart;
     shmMap->SO_CAP_MAX = map->SO_CAP_MAX;
     shmMap->SO_CAP_MIN = map->SO_CAP_MIN;
@@ -27,6 +27,7 @@ void putMapInShm(masterMap *map)
     || masterMap | taxi[map->SO_TAXI] | person[map->SO_SOURCES] | mapCell[map->SO_WIDTH][map->SO_HEIGHT] | taxi[map->SO_WIDTH][map->SO_HEIGHT][map->SO_CAP_MAX] ||
     Returns the semID
 */
+
 int allocateShm(int shmKey, masterMap *map){
     return shmget(shmKey, sizeof(masterMap) + sizeof(taxi[map->SO_TAXI]) + sizeof(person[map->SO_SOURCES]) + sizeof(mapCell[map->SO_WIDTH][map->SO_HEIGHT]) + sizeof(taxi[map->SO_WIDTH][map->SO_HEIGHT][map->SO_CAP_MAX]), IPC_CREAT | 0666);
 }

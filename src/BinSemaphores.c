@@ -7,6 +7,7 @@ semun:
 	array -> array for GETALL, SETALL
 	__buf -> buffer fot IPC_INFO
 */
+
 union semun
 {
 	int val;
