@@ -4,6 +4,7 @@
 #include <time.h>
 #include <semaphore.h>
 #include <sys/shm.h>
+#include <signal.h>
 
 
 
@@ -56,6 +57,16 @@ void bornATaxi(int myNumber)
 
 }
 
+static void alarmHandler(int signalNum){
+    printf("Taxi n%d si è suicidato\n", getpid());
+    exit(EXIT_FAILURE);
+}
+
 void taxiKickoff(){
     printf("Yay, taxi n%d andato\n", myTaxiNumber);
+    if(signal(SIGALRM, alarmHandler)==SIG_ERR){
+        printf("Something's wrong on signal handler change");
+    };
+    alarm(1);
+    while(1);
 }

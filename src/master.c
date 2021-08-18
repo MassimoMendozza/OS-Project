@@ -320,6 +320,9 @@ void bornAMaster()
             printf("Can't send message to kickoff taxi n%d", getPerson(a)->processid);
         };
     }
+
+    
+    while(1);
 }
 
 int main(int argc, char *argv[])
