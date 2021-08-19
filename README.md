@@ -3,7 +3,7 @@
  
 ## To-do
 - [ ] alarm ogni volta che finisce un'azione del taxi 
-- [x] alarm per la simulazione che finisca dopo tot
+- [ ] alarm per la simulazione che finisca dopo tot
 - [ ] capire siginfo_t con sigqueue
 - [ ] messaggi per statistiche
 - [ ] fare prelevare messaggi di richieste ai taxi
