@@ -4,7 +4,7 @@
 #define MSG_KICKOFF 0
 
 
-typedef struct _person //oggetto persona
+typedef struct _person /*oggetto persona*/
 {
 	int processid;
 	int number;
@@ -12,7 +12,7 @@ typedef struct _person //oggetto persona
 } person;
 
 
-typedef struct _taxi  //oggetto taxi
+typedef struct _taxi  /*oggetto taxi*/
 {
 	int processid;
 	int number;
@@ -21,15 +21,15 @@ typedef struct _taxi  //oggetto taxi
 } taxi;
 
 
-typedef struct _mapCell  //oggetto mappa della città
+typedef struct _mapCell  /*oggetto mappa della città*/
 {
 	int maxElements, currentElements, holdingTime, cantPutAnHole;
 	taxi **drivers;
-	person **clients;
+	person *client;
 } mapCell;
 
 
-typedef struct _masterMap //oggetto mappa città
+typedef struct _masterMap /*oggetto mappa città*/
 {
 	int SO_WIDTH, SO_HEIGHT, SO_HOLES, SO_TOP_CELLS, SO_SOURCES, SO_CAP_MIN, SO_CAP_MAX, SO_TAXI, SO_TIMENSEC_MIN, SO_TIMENSEC_MAX, SO_TIMEOUT, SO_DURATION;
 	int cellsSemID;
@@ -39,7 +39,7 @@ typedef struct _masterMap //oggetto mappa città
 } masterMap;
 
 
-typedef struct _message //oggetto messaggio (?)
+typedef struct _message /*oggetto messaggio (?)*/
 {
 	long mtype;
 	int sourceX, sourceY, destX, destY;
@@ -49,7 +49,7 @@ typedef struct _message //oggetto messaggio (?)
 } message;
 
 
-typedef struct _requests //oggetto richiesta
+typedef struct _requests /*oggetto richiesta*/
 {
 	/*coda richieste*/
 	int semID;
