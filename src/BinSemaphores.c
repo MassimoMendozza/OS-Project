@@ -41,7 +41,7 @@ int reserveSem(int semId, int semNum)
 	return semop(semId, &sops, 1);
 }
 
-int relaseSem(int semId, int semNum)
+int releaseSem(int semId, int semNum)
 {
 	struct sembuf sops;
 	sops.sem_num = semNum;

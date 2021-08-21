@@ -5,9 +5,9 @@
 #include <semaphore.h>
 #include <sys/shm.h>
 #include <signal.h>
+
+#include <time.h>
 #include <sys/types.h>
-
-
 
 #ifndef SHMUTILS_H
 #define SHMUTILS_H
@@ -17,20 +17,18 @@
 #include "TaxiElements.h"
 #endif
 
-
-
 int msgID;
 int myTaxiNumber;
+taxi *myself;
 
+void bornATaxi(int myNumber)
+{
 
-
-void bornATaxi(int myNumber){
-    
-    myTaxiNumber = myNumber;/*ti amo <3*/
+    myTaxiNumber = myNumber; /*ti amo <3*/
 
     printf("Taxi n%d with pid %d\n", myNumber, getpid());
 
-    taxi *myself = getTaxi(myNumber);
+    myself = getTaxi(myNumber);
     myself->processid = getpid();
     myself->number = myNumber;
     myself->client = NULL;
@@ -43,154 +41,96 @@ void bornATaxi(int myNumber){
         Waiting the simulation kickoff
     */
 
-    if((msgrcv(msgID, &msgPlaceholder, sizeof(msgPlaceholder), getpid(),0))==-1){
+    if ((msgrcv(msgID, &msgPlaceholder, sizeof(msgPlaceholder), getpid(), 0)) == -1)
+    {
         printf("Qualcosa non va bro");
         exit(EXIT_FAILURE);
-    }else{
-        if(msgPlaceholder.type==MSG_KICKOFF){
-            
-        taxiKickoff();
-        }else{
+    }
+    else
+    {
+        if (msgPlaceholder.type == MSG_KICKOFF)
+        {
+
+            taxiKickoff();
+        }
+        else
+        {
             printf("%d\n", msgPlaceholder.type);
         }
     }
-
-
 }
 
+void moveMyselfIn(int destX, int destY){
+    while(getMapCellAt(destX,destY)->maxElements==getMapCellAt(destX, destY)->currentElements);
+    reserveSem(getMap()->cellsSemID, (destX*getMap()->SO_HEIGHT)+destY);
+    reserveSem(getMap()->cellsSemID, (myself->posX*getMap()->SO_HEIGHT)+myself->posY);
+    getMapCellAt(myself->posX, myself->posY)->currentElements--;
+    getMapCellAt(destX, destY)->currentElements++;
+    releaseSem(getMap()->cellsSemID, (myself->posX*getMap()->SO_HEIGHT)+myself->posY);
+    releaseSem(getMap()->cellsSemID, (destX*getMap()->SO_HEIGHT)+destY);
+    myself->posX=destX; myself->posY=destY;
+    alarm(getMap()->SO_TIMEOUT);
+    struct timespec request = {0, getMapCellAt(destX, destY)->holdingTime};
+    struct timespec remaining;
+    nanosleep(&request, &remaining);
+};
 
-void guida_taxi(taxi bro, mapCell destination, masterMap mappa){ //muove il taxi
+void driveTaxi(int destX, int destY)
+{
+    moveOnX(destX, destY);
+    moveOnY(destX, destY);
+}
 
-    //cambiare parametri, rivedere il sistema delle matrici e controllo buchi/muri
-
-    while (!(bro->xcoord==destination->xcoord&&bro->xcoord==destination->xcoord)){
-
-        if (bro->xcoord< destination->xcoord){ //caso 1
-
-            if (bro->ycoord< destination->ycoord){  //caso 1.1
-                if (mappa[bro->xcoord+1][bro->ycoord+1]!= hole){        /**/
-                    bro->xcoord++;  //ti sposti a dx
-                    bro->ycoord++;  //ti sposti in alto
-                }
-                else if (mappa[bro->xcoord+1][bro->ycoord]!=muro){       /**/
-                    bro->xcoord--;
-                    bro->ycoord++;
-                }
-                else{  
-                    bro->xcoord=bro->xcoord +2; //ti sposti a dx
-                    bro->ycoord++;
-                }
-            }
-
-            else if(bro->ycoord> destination->ycoord){  //caso 1.2
-                if (mappa[bro->xcoord+1][bro->ycoord-1]!=hole){        /**/
-                    bro->xcoord++; //ti sposti a dx
-                    bro->ycoord--;  //ti sposti in basso
-                }
-                else if(mappa[bro->xcoord+1][bro->ycoord]!=muro){       /**/
-                    bro->xcoord--;
-                    bro->ycoord--;
-                }
-                else{
-                    bro->xcoord=bro->xcoord+2;  //ti sposti a dx
-                    bro->ycoord--; //ti sposti in basso
-                }
-            }
-
-            else{  //caso 1.3 orizzontale
-                if (mappa[bro->xcoord+1][bro->ycoord]!=hole){      /**/
-                    bro->xcoord++; //vai a destra
-                }
-                else{ 
-                    bro->xcoord++; //vai a destra
-                    bro->ycoord++; //vai in alto
-                }
-            }
+void moveOnX(int destX, int destY)
+{
+    while (!(destX == myself->posX))
+    {
+        if ((destY == myself->posY))
+        {
+            int xToGo = myself->posX + (-1 + ((myself->posX - 1) == -1) * 2);
+            moveMyselfIn(xToGo, myself->posY);
+            moveOnY(destX, destY);
         }
-
-        else if(bro->xcoord> destination->xcoord){ //caso 2
-            if (bro->ycoord< destination->ycoord){ //caso 2.1
-                if (mappa[bro->xcoord-1][bro->ycoord+1]!=hole){         /**/
-                    bro->xcoord--; //ti sposti a sx
-                    bro->ycoord++; //ti sposti in alto
-                }
-                else if(mappa[bro->xcoord-1][bro->ycoord]!=muro){       /**/
-                    bro->xcoord++;
-                    bro->ycoord--;
-                }
-                else{
-                    bro->xcoord= bro->xcoord-2; //ti sposti a sx
-                    bro->ycoord++; //ti sposti in alto
-                }
-            }
-            
-            else if(bro->ycoord>destination->ycoord){ //caso 2.2
-                if(mappa[bro->xcoord-1][bro->ycoord-1]!=hole){            /**/
-                    bro->xcoord--; //ti sposti a sx
-                    bro->ycoord--; //ti sposti in basso
-                }
-                else if (mappa[bro->xcoord-1][bro->ycoord]!=muro){      /**/
-                    bro->xcoord++;
-                    bro->ycoord--;
-                }
-                else{
-                    bro->xcoord=bro->xcoord-2; //ti sposti in basso
-                    bro->ycoord--;
-                }
-            }
-            
-            else{ //caso 2.3 orizzontale
-                if(mappa[bro->xcoord][bro->ycoord-1]!=hole){       /**/
-                    bro->ycoord--; //ti sposti in basso
-                }
-                else{
-                    bro->xcoord--; //ti sposti a sx
-                    bro->ycoord--; //ti sposti in basso
-                }
-            }
-        }
-
-        else{ //caso 3
-            if (bro->ycoord< destination->ycoord){ //caso 3.1
-                if(mappa[bro->xcoord][bro->ycoord+1]!=hole){               /**/
-                    bro->ycoord++; //ti muovi in alto
-                }
-                else if(mappa[bro->xcoord+1][bro->ycoord]!=muro){          /**/
-                    bro->xcoord++; //ti muovi a dx
-                    bro->ycoord++; //ti muovi in alto
-                }
-                else{
-                    bro->xcoord--;
-                    bro->ycoord++;
-                }
-            }
-            
-            else if(bro->ycoord>destination->ycoord){ //caso 3.2
-                if(mappa[bro->xcoord][bro->ycoord-1]!=hole){           /**/
-                    bro->ycoord--; //ti muovi in basso
-                }
-                else if(mappa[bro->xcoord-1][bro->ycoord]!=muro){      /**/
-                    bro->xcoord--;
-                    bro->ycoord--;
-                }
-                else{
-                    bro->xcoord++; //ti muovi a sx
-                    bro->ycoord--; //ti muovi in basso
-                }
-            }
+        int xToGo = myself->posX + ((1) * (myself->posX < destX) + (-1) * (myself->posX > destX));
+        if (getMapCellAt(xToGo, myself->posY)->maxElements == -1)
+        {
+            moveOnY(destX, destY);
         }
     }
 }
 
+void moveOnY(int destX, int destY)
+{
+    while (!(destY == myself->posY))
+    {
+        if ((destX == myself->posX))
+        {
+            int yToGo = myself->posY + (-1 + ((myself->posY - 1) == -1) * 2);
+            moveMyselfIn(myself->posX, yToGo);
+            moveOnX(destX, destY);
+        }
+        int yToGo = myself->posY + ((1) * (myself->posY < destY) + (-1) * (myself->posY > destY));
+        if (getMapCellAt(myself->posX, yToGo)->maxElements == -1)
+        {
+            moveOnX(destX, destY);
+        }
+    }
+}
 
-static void alarmHandler(int signalNum){
-    printf("Taxi n%d si è suicidato\n", getpid());
+static void alarmHandler(int signalNum)
+{
+    message killNotification;
+    killNotification.driverID = myTaxiNumber;
+    killNotification.type = MSG_TIMEOUT;
+    killNotification.mtype = MSG_TIMEOUT;
+    msgsnd(msgID, &killNotification, sizeof(message), 0);
     exit(EXIT_FAILURE);
 }
 
-void taxiKickoff(){
+void taxiKickoff()
+{
     printf("Yay, taxi n%d andato\n", myTaxiNumber);
-/*
+    /*
     struct sigaction idleAlarm;
     sigset_t idleMask;
 
@@ -201,9 +141,11 @@ void taxiKickoff(){
     idleAlarm.sa_mask = idleMask;
 */
 
-    if(signal(SIGALRM, &alarmHandler)==SIG_ERR){
+    if (signal(SIGALRM, &alarmHandler) == SIG_ERR)
+    {
         printf("Something's wrong on signal handler change");
     };
-    alarm(1);
-    while(1);
+    alarm(getMap()->SO_TIMEOUT);
+    while (1)
+        ;
 }
