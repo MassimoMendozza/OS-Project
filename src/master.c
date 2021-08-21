@@ -311,20 +311,26 @@ void bornAMaster()
     kickoffMessage.type=MSG_KICKOFF;
     for(a=0; a<map->SO_TAXI; a++){
         kickoffMessage.mtype=(long)(getTaxi(a)->processid);
-        if((msgsnd(msgID, &kickoffMessage,sizeof(kickoffMessage),  0))==-1){
+        if((msgsnd(msgID, &kickoffMessage,sizeof(message),  0))==-1){
             printf("Can't send message to kickoff taxi n%d", getTaxi(a)->processid);
         };
     }
     
     for(a=0; a<map->SO_SOURCES; a++){
         kickoffMessage.mtype=(long)(getPerson(a)->processid);
-        if((msgsnd(msgID, &kickoffMessage,sizeof(kickoffMessage), 0))==-1){
+        if((msgsnd(msgID, &kickoffMessage,sizeof(message), 0))==-1){
             printf("Can't send message to kickoff taxi n%d", getPerson(a)->processid);
         };
     }
 
     
-    while(1);
+    while(1){
+        /* checking if someone's killed itself*/
+        message placeHolder;
+        if(msgrcv(msgID, &placeHolder, sizeof(message), MSG_TIMEOUT, IPC_NOWAIT)!=-1){
+            printf("Taxi n%d suicidato\n", placeHolder.driverID);
+        }
+    };
 }
 
 int main(int argc, char *argv[])

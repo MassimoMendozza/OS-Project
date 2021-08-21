@@ -39,7 +39,7 @@ void bornAClient(int myNumber)
         Waiting the simulation kickoff
     */
 
-    if((msgrcv(msgID, &msgPlaceholder, sizeof(msgPlaceholder), (long)(myself->processid),0))==-1){
+    if((msgrcv(msgID, &msgPlaceholder, sizeof(message), (long)(myself->processid),0))==-1){
         printf("Qualcosa non va bro");
         exit(EXIT_FAILURE);
     }else{
@@ -54,4 +54,5 @@ void bornAClient(int myNumber)
 
 void clientKickoff(){
     printf("ALLAAAAAAAAAh, cliente n%d andato\n", myClientNumber);
+    while(1);
 }
