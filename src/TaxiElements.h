@@ -14,6 +14,9 @@ typedef struct _person /*oggetto persona*/
 
 typedef struct _taxi  /*oggetto taxi*/
 {
+	int xcoord;
+	int ycoord;
+
 	int processid;
 	int number;
 	int distanceDone, ridesDone;
@@ -22,7 +25,9 @@ typedef struct _taxi  /*oggetto taxi*/
 
 
 typedef struct _mapCell  /*oggetto mappa della città*/
-{
+{	int xcoord;
+	int ycoord;
+	
 	int maxElements, currentElements, holdingTime, cantPutAnHole;
 	taxi **drivers;
 	person *client;

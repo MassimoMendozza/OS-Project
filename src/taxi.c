@@ -57,6 +57,130 @@ void bornATaxi(int myNumber){
 
 }
 
+
+void guida_taxi(taxi map, mapCell destination){ //muove il taxi
+
+    //cambiare parametri, rivedere il sistema delle matrici e controllo buchi/muri
+
+    while (!(map->xcoord==destination->xcoord&&map->xcoord==destination->xcoord)){
+
+        if (map->xcoord< destination->xcoord){ //caso 1
+
+            if (map->ycoord< destination->ycoord){  //caso 1.1
+                if (map[x taxi +1][y taxi +1]!= hole){        /**/
+                    map->xcoord++;  //ti sposti a dx
+                    map->ycoord++;  //ti sposti in alto
+                }
+                else if (map[x taxi +1][y taxi]!=muro){       /**/
+                    map->xcoord--;
+                    map->ycoord++;
+                }
+                else{  
+                    map->xcoord=map->xcoord +2; //ti sposti a dx
+                    map->ycoord++;
+                }
+            }
+
+            else if(map->ycoord> destination->ycoord){  //caso 1.2
+                if (map[x taxi +1][y taxi-1]!=hole){        /**/
+                    map->xcoord++; //ti sposti a dx
+                    map->ycoord--;  //ti sposti in basso
+                }
+                else if(map[x taxi+1][y taxi]!=muro){       /**/
+                    map->xcoord--;
+                    map->ycoord--;
+                }
+                else{
+                    map->xcoord=map->xcoord+2;  //ti sposti a dx
+                    map->ycoord--; //ti sposti in basso
+                }
+            }
+
+            else{  //caso 1.3 orizzontale
+                if (map[x taxi+1][y taxi]!=hole){      /**/
+                    map->xcoord++; //vai a destra
+                }
+                else{ 
+                    map->xcoord++; //vai a destra
+                    map->ycoord++; //vai in alto
+                }
+            }
+        }
+
+        else if(map->xcoord> destination->xcoord){ //caso 2
+            if (map->ycoord< destination->ycoord){ //caso 2.1
+                if (map[x taxi-1][y taxi +1]!=hole){         /**/
+                    map->xcoord--; //ti sposti a sx
+                    map->ycoord++; //ti sposti in alto
+                }
+                else if(map[x taxi -1][y taxi]!=muro){       /**/
+                    map->xcoord++;
+                    map->ycoord--;
+                }
+                else{
+                    map->xcoord= map->xcoord-2; //ti sposti a sx
+                    map->ycoord++; //ti sposti in alto
+                }
+            }
+            
+            else if(map->ycoord>destination->ycoord){ //caso 2.2
+                if(map[x taxi-1][y taxi-1]){            /**/
+                    map->xcoord--; //ti sposti a sx
+                    map->ycoord--; //ti sposti in basso
+                }
+                else if (map[taxi x-1][taxi y]!=muro){      /**/
+                    map->xcoord++;
+                    map->ycoord--;
+                }
+                else{
+                    map->xcoord=map->xcoord-2; //ti sposti in basso
+                    map->ycoord--;
+                }
+            }
+            
+            else{ //caso 2.3 orizzontale
+                if(map[x taxi][y taxi-1]!=hole){       /**/
+                    map->ycoord--; //ti sposti in basso
+                }
+                else{
+                    map->xcoord--; //ti sposti a sx
+                    map->ycoord--; //ti sposti in basso
+                }
+            }
+        }
+
+        else{ //caso 3
+            if (map->ycoord< destination->ycoord){ //caso 3.1
+                if(map[x taxi][y taxi+1]!=hole){               /**/
+                    map->ycoord++; //ti muovi in alto
+                }
+                else if(map[x taxi+1][y taxi]!=muro){          /**/
+                    map->xcoord++; //ti muovi a dx
+                    map->ycoord++; //ti muovi in alto
+                }
+                else{
+                    map->xcoord--;
+                    map->ycoord++;
+                }
+            }
+            
+            else if(map->ycoord>destination->ycoord){ //caso 3.2
+                if(map[x taxi][y taxi-1]!=hole){           /**/
+                    map->ycoord--; //ti muovi in basso
+                }
+                else if(map[x taxi-1][y taxi]!=muro){      /**/
+                    map->xcoord--;
+                    map->ycoord--;
+                }
+                else{
+                    map->xcoord++; //ti muovi a sx
+                    map->ycoord--; //ti muovi in basso
+                }
+            }
+        }
+    }
+}
+
 static void alarmHandler(int signalNum){
     printf("Taxi n%d si è suicidato\n", getpid());
     exit(EXIT_FAILURE);
