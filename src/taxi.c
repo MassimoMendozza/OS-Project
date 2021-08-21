@@ -5,6 +5,7 @@
 #include <semaphore.h>
 #include <sys/shm.h>
 #include <signal.h>
+#include <sys/types.h>
 
 
 
@@ -57,14 +58,33 @@ void bornATaxi(int myNumber){
 
 }
 
-static void alarmHandler(int signalNum){
-    printf("Taxi n%d si è suicidato\n", getpid());
+void alarmHandler(int signalNum){
+    message kickoffMessage;
+
+    kickoffMessage.type=MSG_KICKOFF;
+    kickoffMessage.driverID=myTaxiNumber;
+        kickoffMessage.mtype=(long)(MSG_TIMEOUT);
+        if((msgsnd(msgID, &kickoffMessage,sizeof(kickoffMessage), 0))==-1){
+            printf("Can't send message to signal I'm killing myself, taxi n%d", myTaxiNumber);
+        };
+    
     exit(EXIT_FAILURE);
 }
 
 void taxiKickoff(){
     printf("Yay, taxi n%d andato\n", myTaxiNumber);
-    if(signal(SIGALRM, alarmHandler)==SIG_ERR){
+/*
+    struct sigaction idleAlarm;
+    sigset_t idleMask;
+
+    idleAlarm.sa_handler = &alarmHandler;
+    idleAlarm.sa_flags=0;
+    sigemptyset(&idleMask);
+    sigaddset(&idleMask, SIGALRM);
+    idleAlarm.sa_mask = idleMask;
+*/
+
+    if(signal(SIGALRM, &alarmHandler)==SIG_ERR){
         printf("Something's wrong on signal handler change");
     };
     alarm(1);

@@ -1,6 +1,6 @@
-CFLAGS 		= -g -std=c89 -pedantic -Wno-all
+CFLAGS 		= -g -std=c89 -pedantic
 #-Wall -Wextra -Wpedantic -Wconversion
-LIBRARY_DEPS = -lpthread -lrt
+LIBRARY_DEPS = -lpthread
 COMMON_DEPS 	= src/*.h Makefile
 COMMON_BUILD_DEP = build/BinSemaphores.o build/taxi.o build/source.o build/shmUtils.o
 BUILD_DIR = build

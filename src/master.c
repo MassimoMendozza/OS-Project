@@ -324,7 +324,13 @@ void bornAMaster()
     }
 
     
-    while(1);
+    while(1){
+        /* checking if someone's killed itself*/
+        message placeHolder;
+        if(msgrcv(msgID, &placeHolder, sizeof(placeHolder), MSG_TIMEOUT, IPC_NOWAIT)!=-1){
+            printf("Taxi n%d suicidato\n", placeHolder.driverID);
+        }
+    };
 }
 
 int main(int argc, char *argv[])

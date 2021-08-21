@@ -2,6 +2,7 @@
 #define TAXIELEMENTS_H
 #include <sys/types.h>
 #define MSG_KICKOFF 0
+#define MSG_TIMEOUT 1
 
 
 typedef struct _person /*oggetto persona*/
