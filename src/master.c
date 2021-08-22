@@ -162,8 +162,9 @@ void initializeMapCells()
     map->cellsSemID = semget(ipcKey, map->SO_HEIGHT * map->SO_WIDTH, IPC_CREAT | 0666);
     initSemAvailable(map->cellsSemID, map->SO_HEIGHT * map->SO_WIDTH);
     union semun arg;
-	arg.val = 1;
-    for(a=0;a<(map->SO_HEIGHT * map->SO_WIDTH);a++){
+    arg.val = 1;
+    for (a = 0; a < (map->SO_HEIGHT * map->SO_WIDTH); a++)
+    {
         semctl(map->cellsSemID, a, SETVAL, arg);
     }
     for (x = 0; x < map->SO_WIDTH; x++)
@@ -259,7 +260,6 @@ void createHoles()
         cells = getMapCellAt(x + 1, y + 1);
         cells->maxElements = -1;
     }
-    printf("\n");
 }
 
 masterMap *mapFromConfig(char *configPath)
@@ -329,47 +329,66 @@ void bornAMaster()
     for (a = 0; a < ((w / 2) - 5); a++)
         addch(ACS_BULLET);
 
-    mvprintw(2, 2, "Active taxis: 0/%d   ", map->SO_TAXI);
+    mvprintw(2, 2, "Waiting for taxis to fill the map... 0/%d   ", map->SO_TAXI);
 
     refresh();
     int a;
-    message kickoffMessage;
+    message placeHolder;
 
-    kickoffMessage.type = MSG_KICKOFF;
-    for (a = 0; a < map->SO_TAXI; a++)
+    a = 0;
+    while (a < getMap()->SO_TAXI)
     {
-        kickoffMessage.mtype = (long)(getTaxi(a)->processid);
-        if ((msgsnd(msgID, &kickoffMessage, sizeof(message), 0)) == -1)
+        if ((msgrcv(msgID, &placeHolder, sizeof(message), MSG_TAXI_CELL, 0)) == -1)
         {
 
-            printw("Can't send message to kickoff taxi n%d", getTaxi(a)->processid);
-            refresh();
-        }else{
+            /* printw("Can't receive message to kickoff taxi n%d", getTaxi(a)->processid);
+            refresh();*/
+        }
+        else
+        {
 
-            mvprintw(2, 2, "Kicked taxis: %d/%d   ", a+1, map->SO_TAXI);
+            mvprintw(2, 2, "Waiting for taxis to fill the map... %d/%d  %d ", ++a, map->SO_TAXI, placeHolder.mtype);
             refresh();
         }
     }
 
-    for (a = 0; a < map->SO_SOURCES; a++)
-    {
-        kickoffMessage.mtype = (long)(getPerson(a)->processid);
-        if ((msgsnd(msgID, &kickoffMessage, sizeof(message), 0)) == -1)
-        {
-            printw("Can't send message to kickoff taxi n%d", getPerson(a)->processid);
-            refresh();
-        }else{
-
-            mvprintw(3, 2, "Kicked clients: %d/%d   ", a+1, map->SO_SOURCES);
-            refresh();
-        };
-    }
-
-    alarm(getMap()->SO_DURATION);
     signal(SIGALRM, alarmMaster);
     signal(SIGINT, alarmHandler);
 
     activeTaxi = 0;
+
+    mvprintw(h - 1, 2, "Status: Kicking off the taxis...");
+    refresh();
+    message kickoffMessage;
+
+    kickoffMessage.mtype = MSG_KICKOFF;
+    for (a = 0; a < map->SO_TAXI; a++)
+    {
+        kill(getTaxi(a)->processid, SIGUSR1);
+        mvprintw(2, 2, "Kicking the taxi... %d/%d  ", a+1, map->SO_TAXI);
+        refresh();
+    }
+
+    mvprintw(h - 1, 2, "Status: Kicking off the clients...");
+    refresh();
+
+    for (a = 0; a < map->SO_SOURCES; a++)
+    {
+        if ((msgrcv(msgID, &kickoffMessage, sizeof(message), getPerson(a)->processid,0)) == -1)
+        {
+            printw("Can't send message to kickoff taxi n%d",getPerson(a)->processid );
+            refresh();
+        }
+        else
+        {
+
+            mvprintw(3, 2, "Kicked clients: %d/%d   ", a + 1, map->SO_SOURCES);
+            refresh();
+        };
+    }
+    mvprintw(h - 1, 2, "Status: Simulation's going.");
+    alarm(getMap()->SO_DURATION);
+    refresh();
     while (1)
     {
         /* checking if someone's killed itself*/
@@ -381,7 +400,7 @@ void bornAMaster()
             refresh();
             /*printf("Taxi n%d suicidato\n", placeHolder.driverID);*/
         }
-        if (msgrcv(msgID, &placeHolder, sizeof(message),MSG_TAXI_CELL, IPC_NOWAIT) != -1)
+        if (msgrcv(msgID, &placeHolder, sizeof(message), MSG_KICKOFF, IPC_NOWAIT) != -1)
         {
             activeTaxi++;
             mvprintw(2, 2, "Active taxis: %d/%d   ", activeTaxi, map->SO_TAXI);

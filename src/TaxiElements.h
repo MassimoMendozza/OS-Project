@@ -4,6 +4,8 @@
 #define MSG_KICKOFF 0
 #define MSG_TIMEOUT 1
 #define MSG_TAXI_CELL 2
+#define MSG_CLIENT_CELL 3
+#define MSG_CLIENT_CALL 4
 
 
 typedef struct _person /*oggetto persona*/

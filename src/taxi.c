@@ -19,10 +19,18 @@
 
 int msgID;
 int myTaxiNumber;
+int goOn;
 taxi *myself;
+
+void kickoffHandler(int a)
+{
+    goOn = 0;
+}
 
 void bornATaxi(int myNumber)
 {
+
+    srand(getpid());
 
     myTaxiNumber = myNumber; /*ti amo <3*/
 
@@ -37,29 +45,60 @@ void bornATaxi(int myNumber)
     myself->posX = -1;
     myself->posY = -1;
 
+    int found, x, y;
+    found = 0;
+    goOn = 1;
+    for (x = rand() % getMap()->SO_WIDTH; x < getMap()->SO_WIDTH && !found; x++)
+    {
+        for (y = rand() % getMap()->SO_HEIGHT; y < getMap()->SO_HEIGHT && !found; y++)
+        {
+            if (getMapCellAt(x, y)->maxElements > -1)
+            {
+
+                if (reserveSem(getMap()->cellsSemID, (x * getMap()->SO_HEIGHT) + y) == -1)
+                {
+                    fprintf(stdout, "%s", strerror(errno));
+                }
+                else
+                {
+                    if (getMapCellAt(x, y)->maxElements > getMapCellAt(x, y)->currentElements)
+                    {
+                        getMapCellAt(x, y)->currentElements++;
+                        myself->posX = x;
+                        myself->posY = y;
+                        found = 1;
+                    }
+                    releaseSem(getMap()->cellsSemID, (x * getMap()->SO_HEIGHT) + y);
+                };
+            }
+        }
+        if ((x == getMap()->SO_WIDTH - 1) && (y == getMap()->SO_HEIGHT - 1))
+        {
+            x = y = 0;
+        }
+    }
+    if ((myself->posX == -1) && (myself->posY == -1))
+    {
+
+        exit(EXIT_FAILURE);
+    } /**/
+    message positionMessage;
+    positionMessage.mtype = MSG_TAXI_CELL;
+    positionMessage.driverID = myTaxiNumber;
+    positionMessage.sourceX = myself->posX;
+    positionMessage.sourceY = myself->posY;
+    msgsnd(msgID, &positionMessage, sizeof(message), 0);
+
     message msgPlaceholder;
 
-    /*
-        Waiting the simulation kickoff
-    */
-
-    if ((msgrcv(msgID, &msgPlaceholder, sizeof(msgPlaceholder), getpid(), 0)) == -1)
+    struct timespec request = {0, 1000000};
+    struct timespec remaining;
+    while (goOn)
     {
-        printf("Qualcosa non va bro");
-        exit(EXIT_FAILURE);
+        nanosleep(&request, &remaining);
     }
-    else
-    {
-        if (msgPlaceholder.type == MSG_KICKOFF)
-        {
 
-            taxiKickoff();
-        }
-        else
-        {
-            printf("%d\n", msgPlaceholder.type);
-        }
-    }
+    taxiKickoff();
 }
 
 void moveMyselfIn(int destX, int destY)
@@ -147,50 +186,15 @@ static void alarmHandler(int signalNum)
 
 void taxiKickoff()
 {
-    /*printf("Yay, taxi n%d andato\n", myTaxiNumber);*/
-    /*
-    struct sigaction idleAlarm;
-    sigset_t idleMask;
-
-    idleAlarm.sa_handler = &alarmHandler;
-    idleAlarm.sa_flags=0;
-    sigemptyset(&idleMask);
-    sigaddset(&idleMask, SIGALRM);
-    idleAlarm.sa_mask = idleMask;
-*/
 
     if (signal(SIGALRM, &alarmHandler) == SIG_ERR)
     {
         printf("Something's wrong on signal handler change");
     };
+    message imHere;
+    imHere.mtype = MSG_KICKOFF;
+    msgsnd(msgID, &imHere, sizeof(message), 0);
     alarm(getMap()->SO_TIMEOUT);
 
-    int newX, newY;
-    while ((myself->posX == -1) && (myself->posY == -1))
-    {
-
-        srand(getpid());
-        newX = rand() % (getMap()->SO_WIDTH );
-        newY = rand() % (getMap()->SO_HEIGHT );
-
-        if(reserveSem(getMap()->cellsSemID, (newX * getMap()->SO_HEIGHT) + newY)==-1){
-            fprintf(stdout, "%s", strerror(errno));
-        };
-        if (getMapCellAt(newX, newY)->maxElements > getMapCellAt(newX, newY)->currentElements)
-        {
-            getMapCellAt(newX, newY)->currentElements++;
-            myself->posX = newX;
-            myself->posY = newY;
-        }
-        releaseSem(getMap()->cellsSemID, (newX * getMap()->SO_HEIGHT) + newY);
-    }
-    message positionMessage;
-    positionMessage.mtype = MSG_TAXI_CELL;
-    positionMessage.driverID = myTaxiNumber;
-    positionMessage.sourceX = myself->posX;
-    positionMessage.sourceY = myself->posY;
-    msgsnd(msgID, &positionMessage, sizeof(message), 0);
-
-    while (1)
-        ;
+    msgrcv(msgID, &imHere, sizeof(message), MSG_CLIENT_CALL,0);
 }

@@ -35,24 +35,25 @@ void bornAClient(int myNumber)
     
     message msgPlaceholder;
 
+    clientKickoff();
+
     /*
         Waiting the simulation kickoff
     */
 
-    if((msgrcv(msgID, &msgPlaceholder, sizeof(message), (long)(myself->processid),0))==-1){
-        printf("Qualcosa non va bro");
-        exit(EXIT_FAILURE);
-    }else{
-        if(msgPlaceholder.type==MSG_KICKOFF){
-            
-        clientKickoff();
-        }else{
-            printf("%d\n", msgPlaceholder.type);
-        }
-    }
 }
 
 void clientKickoff(){
     /*printf("ALLAAAAAAAAAh, cliente n%d andato\n", myClientNumber);*/
-    while(1);
+    int goOn=1;
+    
+    message imHere;
+    imHere.mtype=getpid();
+    msgsnd(msgID, &imHere, sizeof(message), 0);
+    struct timespec request = {0, 1000000};
+    struct timespec remaining;
+    while (goOn)
+    {
+        nanosleep(&request, &remaining);
+    }
 }
