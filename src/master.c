@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
+#include <ncurses.h>
 
 #include <semaphore.h>
 
@@ -27,9 +28,17 @@ key_t ipcKey;
 int projID;
 
 masterMap *map;
-int shmID,msgID;
+int shmID, msgID, activeTaxi;
 void *addrstart;
 
+WINDOW *win;
+int h, w, a;
+
+void alarmMaster(int sig)
+{
+    endwin();
+    return (EXIT_SUCCESS);
+}
 /*
 Simulation parameter
 */
@@ -59,8 +68,8 @@ masterMap *readConfig(char *configPath)
     newMap->SO_HEIGHT = -1;
     newMap->SO_WIDTH = -1;
 
-    printf("\033[H\033[J");
-    printf("Reading config file from %s...\n\n", configPath);
+    /*printf("\033[H\033[J");
+    printf("Reading config file from %s...\n\n", configPath);*/
     if ((config = (FILE *)fopen(configPath, "r")) == NULL)
     {
         printf("Config file not found.\nMaster process will now exit.\n");
@@ -152,6 +161,11 @@ void initializeMapCells()
     mapCell *cells = map->map = getMapCellAt(0, 0);
     map->cellsSemID = semget(ipcKey, map->SO_HEIGHT * map->SO_WIDTH, IPC_CREAT | 0666);
     initSemAvailable(map->cellsSemID, map->SO_HEIGHT * map->SO_WIDTH);
+    union semun arg;
+	arg.val = 1;
+    for(a=0;a<(map->SO_HEIGHT * map->SO_WIDTH);a++){
+        semctl(map->cellsSemID, a, SETVAL, arg);
+    }
     for (x = 0; x < map->SO_WIDTH; x++)
     {
         for (y = 0; y < map->SO_HEIGHT; y++)
@@ -189,9 +203,9 @@ void createHoles()
     int a, b, c, x, y;
     masterMap *map = getMap();
     mapCell *cells;
-    printf("The following parameters have been loaded:\n\tSO_WIDTH = %d\n\tSO_HEIGHT = %d\n\tSO_HOLES = %d\n\tSO_TOP_CELLS = %d\n\tSO_SOURCES = %d\n\tSO_CAP_MIN = %d\n\tSO_CAP_MAX = %d\n\tSO_TAXI = %d\n\tSO_TIMENSEC_MIN = %d\n\tSO_TIMENSEC_MAX = %d\n\tSO_TIMEOUT = %d\n\tSO_DURATION = %d\n\n", map->SO_WIDTH, map->SO_HEIGHT, map->SO_HOLES, map->SO_TOP_CELLS, map->SO_SOURCES, map->SO_CAP_MIN, map->SO_CAP_MAX, map->SO_TAXI, map->SO_TIMENSEC_MIN, map->SO_TIMENSEC_MAX, map->SO_TIMEOUT, map->SO_DURATION);
+    /*printf("The following parameters have been loaded:\n\tSO_WIDTH = %d\n\tSO_HEIGHT = %d\n\tSO_HOLES = %d\n\tSO_TOP_CELLS = %d\n\tSO_SOURCES = %d\n\tSO_CAP_MIN = %d\n\tSO_CAP_MAX = %d\n\tSO_TAXI = %d\n\tSO_TIMENSEC_MIN = %d\n\tSO_TIMENSEC_MAX = %d\n\tSO_TIMEOUT = %d\n\tSO_DURATION = %d\n\n", map->SO_WIDTH, map->SO_HEIGHT, map->SO_HOLES, map->SO_TOP_CELLS, map->SO_SOURCES, map->SO_CAP_MIN, map->SO_CAP_MAX, map->SO_TAXI, map->SO_TIMENSEC_MIN, map->SO_TIMENSEC_MAX, map->SO_TIMEOUT, map->SO_DURATION);
 
-    printf("Creating %d holes...\n", map->SO_HOLES);
+    printf("Creating %d holes...\n", map->SO_HOLES);*/
     for (c = 0; c < map->SO_HOLES; c++)
     {
         x = randFromRange(0, map->SO_WIDTH - 1) - 1;
@@ -303,39 +317,93 @@ void beFruitful()
 
 void bornAMaster()
 {
-    printf("\n\nMaster's speaking\n\n");
+    wmove(win, 0, 0);
 
+    for (a = 0; a < ((w / 2) - 5); a++)
+        addch(ACS_BULLET);
+
+    addch(ACS_CKBOARD);
+    printw(" Taxicab ");
+    addch(ACS_CKBOARD);
+
+    for (a = 0; a < ((w / 2) - 5); a++)
+        addch(ACS_BULLET);
+
+    mvprintw(2, 2, "Active taxis: 0/%d   ", map->SO_TAXI);
+
+    refresh();
     int a;
     message kickoffMessage;
 
-    kickoffMessage.type=MSG_KICKOFF;
-    for(a=0; a<map->SO_TAXI; a++){
-        kickoffMessage.mtype=(long)(getTaxi(a)->processid);
-        if((msgsnd(msgID, &kickoffMessage,sizeof(message),  0))==-1){
-            printf("Can't send message to kickoff taxi n%d", getTaxi(a)->processid);
-        };
+    kickoffMessage.type = MSG_KICKOFF;
+    for (a = 0; a < map->SO_TAXI; a++)
+    {
+        kickoffMessage.mtype = (long)(getTaxi(a)->processid);
+        if ((msgsnd(msgID, &kickoffMessage, sizeof(message), 0)) == -1)
+        {
+
+            printw("Can't send message to kickoff taxi n%d", getTaxi(a)->processid);
+            refresh();
+        }else{
+
+            mvprintw(2, 2, "Kicked taxis: %d/%d   ", a+1, map->SO_TAXI);
+            refresh();
+        }
     }
-    
-    for(a=0; a<map->SO_SOURCES; a++){
-        kickoffMessage.mtype=(long)(getPerson(a)->processid);
-        if((msgsnd(msgID, &kickoffMessage,sizeof(message), 0))==-1){
-            printf("Can't send message to kickoff taxi n%d", getPerson(a)->processid);
+
+    for (a = 0; a < map->SO_SOURCES; a++)
+    {
+        kickoffMessage.mtype = (long)(getPerson(a)->processid);
+        if ((msgsnd(msgID, &kickoffMessage, sizeof(message), 0)) == -1)
+        {
+            printw("Can't send message to kickoff taxi n%d", getPerson(a)->processid);
+            refresh();
+        }else{
+
+            mvprintw(3, 2, "Kicked clients: %d/%d   ", a+1, map->SO_SOURCES);
+            refresh();
         };
     }
 
-    
-    while(1){
+    alarm(getMap()->SO_DURATION);
+    signal(SIGALRM, alarmMaster);
+    signal(SIGINT, alarmHandler);
+
+    activeTaxi = 0;
+    while (1)
+    {
         /* checking if someone's killed itself*/
         message placeHolder;
-        if(msgrcv(msgID, &placeHolder, sizeof(message), MSG_TIMEOUT, IPC_NOWAIT)!=-1){
-            printf("Taxi n%d suicidato\n", placeHolder.driverID);
+        if (msgrcv(msgID, &placeHolder, sizeof(message), MSG_TIMEOUT, IPC_NOWAIT) != -1)
+        {
+            activeTaxi--;
+            mvprintw(2, 2, "Active taxis: %d/%d   ", activeTaxi, map->SO_TAXI);
+            refresh();
+            /*printf("Taxi n%d suicidato\n", placeHolder.driverID);*/
+        }
+        if (msgrcv(msgID, &placeHolder, sizeof(message),MSG_TAXI_CELL, IPC_NOWAIT) != -1)
+        {
+            activeTaxi++;
+            mvprintw(2, 2, "Active taxis: %d/%d   ", activeTaxi, map->SO_TAXI);
+            refresh();
+            /*printf("Taxi n%d posizionato in x:%d, y:%d, cella a %d/%d\n", placeHolder.driverID, placeHolder.sourceX, placeHolder.sourceY, getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->currentElements, getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->maxElements);*/
         }
     };
 }
 
 int main(int argc, char *argv[])
 {
-    srand(time(0));
+    srand(time(NULL));
+
+    initscr();
+    curs_set(0);
+    cbreak();
+    noecho();
+    keypad(stdscr, TRUE);
+    nodelay(stdscr, TRUE);
+
+    getmaxyx(stdscr, h, w);
+    win = newwin(h, w, 0, 0);
 
     char *configPath;
 

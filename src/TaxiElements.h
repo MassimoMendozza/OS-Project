@@ -3,6 +3,7 @@
 #include <sys/types.h>
 #define MSG_KICKOFF 0
 #define MSG_TIMEOUT 1
+#define MSG_TAXI_CELL 2
 
 
 typedef struct _person /*oggetto persona*/

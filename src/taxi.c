@@ -26,7 +26,7 @@ void bornATaxi(int myNumber)
 
     myTaxiNumber = myNumber; /*ti amo <3*/
 
-    printf("Taxi n%d with pid %d\n", myNumber, getpid());
+    /*printf("Taxi n%d with pid %d\n", myNumber, getpid());*/
 
     myself = getTaxi(myNumber);
     myself->processid = getpid();
@@ -34,6 +34,8 @@ void bornATaxi(int myNumber)
     myself->client = NULL;
     myself->distanceDone = 0;
     myself->ridesDone = 0;
+    myself->posX = -1;
+    myself->posY = -1;
 
     message msgPlaceholder;
 
@@ -60,16 +62,32 @@ void bornATaxi(int myNumber)
     }
 }
 
-void moveMyselfIn(int destX, int destY){
-    while(getMapCellAt(destX,destY)->maxElements==getMapCellAt(destX, destY)->currentElements);
-    reserveSem(getMap()->cellsSemID, (destX*getMap()->SO_HEIGHT)+destY);
-    reserveSem(getMap()->cellsSemID, (myself->posX*getMap()->SO_HEIGHT)+myself->posY);
-    getMapCellAt(myself->posX, myself->posY)->currentElements--;
-    getMapCellAt(destX, destY)->currentElements++;
-    releaseSem(getMap()->cellsSemID, (myself->posX*getMap()->SO_HEIGHT)+myself->posY);
-    releaseSem(getMap()->cellsSemID, (destX*getMap()->SO_HEIGHT)+destY);
-    myself->posX=destX; myself->posY=destY;
+void moveMyselfIn(int destX, int destY)
+{
+    int originX, originY;
+    while ((myself->posX != destX) && (myself->posY != destY))
+    {
+
+        while (getMapCellAt(destX, destY)->maxElements == getMapCellAt(destX, destY)->currentElements)
+            ;
+
+        reserveSem(getMap()->cellsSemID, (destX * getMap()->SO_HEIGHT) + destY);
+        reserveSem(getMap()->cellsSemID, (myself->posX * getMap()->SO_HEIGHT) + myself->posY);
+        if (getMapCellAt(destX, destY)->maxElements > getMapCellAt(destX, destY)->currentElements)
+        {
+
+            getMapCellAt(originX, originY)->currentElements--;
+            getMapCellAt(destX, destY)->currentElements++;
+            myself->posX = destX;
+            myself->posY = destY;
+        }
+
+        releaseSem(getMap()->cellsSemID, (originX * getMap()->SO_HEIGHT) + originY);
+        releaseSem(getMap()->cellsSemID, (destX * getMap()->SO_HEIGHT) + destY);
+    }
+
     alarm(getMap()->SO_TIMEOUT);
+
     struct timespec request = {0, getMapCellAt(destX, destY)->holdingTime};
     struct timespec remaining;
     nanosleep(&request, &remaining);
@@ -129,7 +147,7 @@ static void alarmHandler(int signalNum)
 
 void taxiKickoff()
 {
-    printf("Yay, taxi n%d andato\n", myTaxiNumber);
+    /*printf("Yay, taxi n%d andato\n", myTaxiNumber);*/
     /*
     struct sigaction idleAlarm;
     sigset_t idleMask;
@@ -146,6 +164,33 @@ void taxiKickoff()
         printf("Something's wrong on signal handler change");
     };
     alarm(getMap()->SO_TIMEOUT);
+
+    int newX, newY;
+    while ((myself->posX == -1) && (myself->posY == -1))
+    {
+
+        srand(getpid());
+        newX = rand() % (getMap()->SO_WIDTH );
+        newY = rand() % (getMap()->SO_HEIGHT );
+
+        if(reserveSem(getMap()->cellsSemID, (newX * getMap()->SO_HEIGHT) + newY)==-1){
+            fprintf(stdout, "%s", strerror(errno));
+        };
+        if (getMapCellAt(newX, newY)->maxElements > getMapCellAt(newX, newY)->currentElements)
+        {
+            getMapCellAt(newX, newY)->currentElements++;
+            myself->posX = newX;
+            myself->posY = newY;
+        }
+        releaseSem(getMap()->cellsSemID, (newX * getMap()->SO_HEIGHT) + newY);
+    }
+    message positionMessage;
+    positionMessage.mtype = MSG_TAXI_CELL;
+    positionMessage.driverID = myTaxiNumber;
+    positionMessage.sourceX = myself->posX;
+    positionMessage.sourceY = myself->posY;
+    msgsnd(msgID, &positionMessage, sizeof(message), 0);
+
     while (1)
         ;
 }

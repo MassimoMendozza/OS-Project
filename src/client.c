@@ -24,7 +24,7 @@ int myClientNumber;
 
 void bornAClient(int myNumber)
 {
-    printf("Client n%d with pid %d\n", myNumber, getpid());
+    /*printf("Client n%d with pid %d\n", myNumber, getpid());*/
     person *myself = getPerson(myNumber);
     myself->processid = getpid();
     myself->number = myNumber;
@@ -53,6 +53,6 @@ void bornAClient(int myNumber)
 }
 
 void clientKickoff(){
-    printf("ALLAAAAAAAAAh, cliente n%d andato\n", myClientNumber);
+    /*printf("ALLAAAAAAAAAh, cliente n%d andato\n", myClientNumber);*/
     while(1);
 }
