@@ -45,6 +45,8 @@ void bornATaxi(int myNumber)
     myself->posX = -1;
     myself->posY = -1;
 
+    signal(SIGUSR1, &kickoffHandler);
+
     int found, x, y;
     found = 0;
     goOn = 1;
@@ -196,5 +198,6 @@ void taxiKickoff()
     msgsnd(msgID, &imHere, sizeof(message), 0);
     alarm(getMap()->SO_TIMEOUT);
 
-    msgrcv(msgID, &imHere, sizeof(message), MSG_CLIENT_CALL,0);
+    /*Taxi si mette in attesa di richieste*/
+    msgrcv(msgID, &imHere, sizeof(message), MSG_CLIENT_CALL, 0);
 }

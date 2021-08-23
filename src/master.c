@@ -37,7 +37,7 @@ int h, w, a;
 void alarmMaster(int sig)
 {
     endwin();
-    return (EXIT_SUCCESS);
+    exit(EXIT_SUCCESS);
 }
 /*
 Simulation parameter
@@ -319,15 +319,12 @@ void bornAMaster()
 {
     wmove(win, 0, 0);
 
-    for (a = 0; a < ((w / 2) - 5); a++)
+    for (a = 0; a < w; a++)
         addch(ACS_BULLET);
-
+    move(0, (w / 2) - 5);
     addch(ACS_CKBOARD);
     printw(" Taxicab ");
     addch(ACS_CKBOARD);
-
-    for (a = 0; a < ((w / 2) - 5); a++)
-        addch(ACS_BULLET);
 
     mvprintw(2, 2, "Waiting for taxis to fill the map... 0/%d   ", map->SO_TAXI);
 
@@ -352,43 +349,61 @@ void bornAMaster()
         }
     }
 
-    signal(SIGALRM, alarmMaster);
-    signal(SIGINT, alarmHandler);
+    signal(SIGALRM, &alarmMaster);
+    signal(SIGINT, &alarmMaster);
 
     activeTaxi = 0;
 
-    mvprintw(h - 1, 2, "Status: Kicking off the taxis...");
+    move(h - 1, 0);
+    clrtoeol();
+    mvprintw(h - 1, 0, "Status: Kicking off the taxis...");
     refresh();
-    message kickoffMessage;
 
-    kickoffMessage.mtype = MSG_KICKOFF;
+    move(2, 0);
+    clrtoeol();
     for (a = 0; a < map->SO_TAXI; a++)
     {
         kill(getTaxi(a)->processid, SIGUSR1);
-        mvprintw(2, 2, "Kicking the taxi... %d/%d  ", a+1, map->SO_TAXI);
+        mvprintw(2, 2, "Kicking the taxi... %d/%d", a + 1, map->SO_TAXI);
         refresh();
     }
 
-    mvprintw(h - 1, 2, "Status: Kicking off the clients...");
+    move(h - 1, 0);
+    clrtoeol();
+    mvprintw(h - 1, 0, "Status: Kicking off the clients...");
     refresh();
 
+    message kickoffMessage;
+    kickoffMessage.mtype = MSG_KICKOFF;
+
+    move(3, 0);
+    clrtoeol();
+    mvprintw(3, 2, "Kicked clients: %d/%d   ", a + 1, map->SO_SOURCES);
+    refresh();
     for (a = 0; a < map->SO_SOURCES; a++)
     {
-        if ((msgrcv(msgID, &kickoffMessage, sizeof(message), getPerson(a)->processid,0)) == -1)
+        if ((msgrcv(msgID, &kickoffMessage, sizeof(message), getPerson(a)->processid, 0)) == -1)
         {
-            printw("Can't send message to kickoff taxi n%d",getPerson(a)->processid );
+            printw("Can't send message to kickoff clients n%d", getPerson(a)->processid);
             refresh();
         }
         else
         {
-
             mvprintw(3, 2, "Kicked clients: %d/%d   ", a + 1, map->SO_SOURCES);
             refresh();
         };
     }
-    mvprintw(h - 1, 2, "Status: Simulation's going.");
+
+    move(h - 1, 0);
+    clrtoeol();
+    mvprintw(h - 1, 0, "Status: Simulation's going.");
     alarm(getMap()->SO_DURATION);
     refresh();
+
+    move(2, 0);
+    clrtoeol();
+    mvprintw(2, 2, "Active taxis: %d/%d   ", activeTaxi, map->SO_TAXI);
+            refresh();
     while (1)
     {
         /* checking if someone's killed itself*/
