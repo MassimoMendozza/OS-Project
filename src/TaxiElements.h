@@ -6,6 +6,7 @@
 #define MSG_TAXI_CELL 2
 #define MSG_CLIENT_CELL 3
 #define MSG_CLIENT_CALL 4
+#define MSG_CLIENT_TAKEN 5
 
 
 typedef struct _person /*oggetto persona*/
@@ -13,6 +14,8 @@ typedef struct _person /*oggetto persona*/
 	int processid;
 	int number;
 	int isOnTaxi;
+	int posX;
+	int posY;
 } person;
 
 
@@ -30,6 +33,7 @@ typedef struct _taxi  /*oggetto taxi*/
 typedef struct _mapCell  /*oggetto mappa della città*/
 {
 	int maxElements, currentElements, holdingTime, cantPutAnHole;
+	person *client;
 } mapCell;
 
 

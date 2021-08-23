@@ -29,7 +29,7 @@ int projID;
 
 masterMap *map;
 int shmID, msgID, activeTaxi;
-void *addrstart;            /*the addres of the shared memory portion (first element is map)*/
+void *addrstart; /*the addres of the shared memory portion (first element is map)*/
 
 WINDOW *win;
 int h, w, a;
@@ -159,23 +159,24 @@ void initializeMapCells()
     int x, y;
     masterMap *map = addrstart;
     mapCell *cells = map->map = getMapCellAt(0, 0);
-    map->cellsSemID = semget(ipcKey, map->SO_HEIGHT * map->SO_WIDTH, IPC_CREAT | 0666);   /*initialization of the semaphores array*/
+    map->cellsSemID = semget(ipcKey, map->SO_HEIGHT * map->SO_WIDTH, IPC_CREAT | 0666); /*initialization of the semaphores array*/
     initSemAvailable(map->cellsSemID, map->SO_HEIGHT * map->SO_WIDTH);
     union semun arg;
     arg.val = 1;
-    for (a = 0; a < (map->SO_HEIGHT * map->SO_WIDTH); a++)  /*setting the array*/
+    for (a = 0; a < (map->SO_HEIGHT * map->SO_WIDTH); a++) /*setting the array*/
     {
         semctl(map->cellsSemID, a, SETVAL, arg);
     }
     for (x = 0; x < map->SO_WIDTH; x++)
     {
-        for (y = 0; y < map->SO_HEIGHT; y++)           /*creation of cells with capacity and time*/
+        for (y = 0; y < map->SO_HEIGHT; y++) /*creation of cells with capacity and time*/
         {
             cells = getMapCellAt(x, y);
             cells->maxElements = randFromRange(map->SO_CAP_MIN, map->SO_CAP_MAX);
             cells->holdingTime = randFromRange(map->SO_TIMENSEC_MIN, map->SO_TIMENSEC_MAX);
             cells->currentElements = 0;
             cells->cantPutAnHole = 0;
+            cells->client = NULL;
         }
     }
 }
@@ -248,20 +249,20 @@ masterMap *mapFromConfig(char *configPath)
 {
     masterMap *map = readConfig(configPath);
 
-    shmID = allocateShm(ipcKey, map);        /*create the shared memory*/
-    msgID = msgget(ipcKey, IPC_CREAT | 0666);  /*create the queue of messages*/
-    addrstart = shmat(shmID, NULL, 0);    /*return the addres of the shared memory portion*/
+    shmID = allocateShm(ipcKey, map);         /*create the shared memory*/
+    msgID = msgget(ipcKey, IPC_CREAT | 0666); /*create the queue of messages*/
+    addrstart = shmat(shmID, NULL, 0);        /*return the addres of the shared memory portion*/
 
-    setAddrstart(addrstart);  /*setting the parameter for the address of sh. memo.*/
-    putMapInShm(map);   /*copy in the sh. memo. the parameters of the map*/
+    setAddrstart(addrstart); /*setting the parameter for the address of sh. memo.*/
+    putMapInShm(map);        /*copy in the sh. memo. the parameters of the map*/
 
-    initializeMapCells(); 
+    initializeMapCells();
     createHoles();
 
     return map;
 }
 
-void beFruitful()    /*creation of processes like taxi and client*/
+void beFruitful() /*creation of processes like taxi and client*/
 {
     int a, shouldIBeATaxi, shouldIBeAClient;
     masterMap *map;
@@ -421,16 +422,10 @@ void bornAMaster()
     refresh();
     for (a = 0; a < map->SO_SOURCES; a++)
     {
-        if ((msgrcv(msgID, &kickoffMessage, sizeof(message), getPerson(a)->processid, 0)) == -1)
-        {
-            printw("Can't send message to kickoff clients n%d", getPerson(a)->processid);
-            refresh();
-        }
-        else
-        {
-            mvprintw(2, 2, "Kicked clients: %d/%d   ", a + 1, map->SO_SOURCES);
-            refresh();
-        };
+
+        kill(getPerson(a)->processid, SIGUSR1);
+        mvprintw(2, 2, "Kicked clients: %d/%d   ", a + 1, map->SO_SOURCES);
+        refresh();
     }
 
     move(h - 1, 0);
