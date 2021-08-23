@@ -29,7 +29,7 @@ int projID;
 
 masterMap *map;
 int shmID, msgID, activeTaxi;
-void *addrstart;
+void *addrstart;            /*the addres of the shared memory portion (first element is map)*/
 
 WINDOW *win;
 int h, w, a;
@@ -159,17 +159,17 @@ void initializeMapCells()
     int x, y;
     masterMap *map = addrstart;
     mapCell *cells = map->map = getMapCellAt(0, 0);
-    map->cellsSemID = semget(ipcKey, map->SO_HEIGHT * map->SO_WIDTH, IPC_CREAT | 0666);
+    map->cellsSemID = semget(ipcKey, map->SO_HEIGHT * map->SO_WIDTH, IPC_CREAT | 0666);   /*initialization of the semaphores array*/
     initSemAvailable(map->cellsSemID, map->SO_HEIGHT * map->SO_WIDTH);
     union semun arg;
     arg.val = 1;
-    for (a = 0; a < (map->SO_HEIGHT * map->SO_WIDTH); a++)
+    for (a = 0; a < (map->SO_HEIGHT * map->SO_WIDTH); a++)  /*setting the array*/
     {
         semctl(map->cellsSemID, a, SETVAL, arg);
     }
     for (x = 0; x < map->SO_WIDTH; x++)
     {
-        for (y = 0; y < map->SO_HEIGHT; y++)
+        for (y = 0; y < map->SO_HEIGHT; y++)           /*creation of cells with capacity and time*/
         {
             cells = getMapCellAt(x, y);
             cells->maxElements = randFromRange(map->SO_CAP_MIN, map->SO_CAP_MAX);
@@ -266,20 +266,20 @@ masterMap *mapFromConfig(char *configPath)
 {
     masterMap *map = readConfig(configPath);
 
-    shmID = allocateShm(ipcKey, map);
-    msgID = msgget(ipcKey, IPC_CREAT | 0666);
-    addrstart = shmat(shmID, NULL, 0);
+    shmID = allocateShm(ipcKey, map);        /*create the shared memory*/
+    msgID = msgget(ipcKey, IPC_CREAT | 0666);  /*create the queue of messages*/
+    addrstart = shmat(shmID, NULL, 0);    /*return the addres of the shared memory portion*/
 
-    setAddrstart(addrstart);
-    putMapInShm(map);
+    setAddrstart(addrstart);  /*setting the parameter for the address of sh. memo.*/
+    putMapInShm(map);   /*copy in the sh. memo. the parameters of the map*/
 
-    initializeMapCells();
+    initializeMapCells(); 
     createHoles();
 
     return map;
 }
 
-void beFruitful()
+void beFruitful()    /*creation of processes like taxi and client*/
 {
     int a, shouldIBeATaxi, shouldIBeAClient;
     masterMap *map;
