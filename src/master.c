@@ -204,61 +204,43 @@ void createHoles()
     int a, b, c, x, y;
     masterMap *map = getMap();
     mapCell *cells;
-    /*printf("The following parameters have been loaded:\n\tSO_WIDTH = %d\n\tSO_HEIGHT = %d\n\tSO_HOLES = %d\n\tSO_TOP_CELLS = %d\n\tSO_SOURCES = %d\n\tSO_CAP_MIN = %d\n\tSO_CAP_MAX = %d\n\tSO_TAXI = %d\n\tSO_TIMENSEC_MIN = %d\n\tSO_TIMENSEC_MAX = %d\n\tSO_TIMEOUT = %d\n\tSO_DURATION = %d\n\n", map->SO_WIDTH, map->SO_HEIGHT, map->SO_HOLES, map->SO_TOP_CELLS, map->SO_SOURCES, map->SO_CAP_MIN, map->SO_CAP_MAX, map->SO_TAXI, map->SO_TIMENSEC_MIN, map->SO_TIMENSEC_MAX, map->SO_TIMEOUT, map->SO_DURATION);
 
-    printf("Creating %d holes...\n", map->SO_HOLES);*/
     for (c = 0; c < map->SO_HOLES; c++)
     {
-        x = randFromRange(0, map->SO_WIDTH - 1) - 1;
-        y = randFromRange(0, map->SO_HEIGHT - 1) - 1;
-        cells = getMapCellAt(x + 1, y + 1);
-        if (cells->cantPutAnHole)
+        x = rand() % map->SO_WIDTH;
+        y = rand() % map->SO_HEIGHT;
+        int found;
+        found = 0;
+        while (!found)
         {
-            a = x + 1;
-            b = y + 1;
-            int limitx, limity;
-            limitx = map->SO_WIDTH;
-            limity = map->SO_HEIGHT;
-            while (a < limitx)
+            if (getMapCellAt(x, y)->cantPutAnHole)
             {
-                for (; a < limitx; a++)
+                y++;
+                if (y == map->SO_HEIGHT)
                 {
-                    for (; b < limity; b++)
+                    y = 0;
+                    x++;
+                }
+                if (x == map->SO_WIDTH)
+                    x = 0;
+            }
+            else
+            {
+                found = 1;
+                getMapCellAt(x, y)->maxElements = -1;
+
+                for (a = x - 1; a < x + 2; a++)
+                {
+                    for (b = y - 1; b < y + 2; b++)
                     {
-                        cells = getMapCellAt(a, b);
-                        if (cells->cantPutAnHole)
+                        if (!(a < 0 || a >= map->SO_WIDTH || b < 0 || b >= map->SO_HEIGHT))
                         {
-                            limitx = a;
-                            limity = b;
-                            x = a - 1;
-                            y = b - 1;
+                            getMapCellAt(a, b)->cantPutAnHole = 1;
                         }
                     }
                 }
-                if (a == map->SO_WIDTH)
-                {
-                    limitx = x + 1;
-                    limity = y + 1;
-                    a = b = 0;
-                }
-            }
-            if (a == limitx)
-            {
-                printf("Cannot find a holes configuration with the given parameters, check your config parameters or try again.\nMaster program will now exit.");
-                exit(EXIT_FAILURE);
             }
         }
-
-        for (a = 0; a < (x + 3) && a < map->SO_WIDTH; a++)
-        {
-            for (b = 0; b < (y + 3) && b < map->SO_HEIGHT; b++)
-            {
-                cells = getMapCellAt(a, b);
-                cells->cantPutAnHole = 1;
-            }
-        }
-        cells = getMapCellAt(x + 1, y + 1);
-        cells->maxElements = -1;
     }
 }
 
@@ -326,10 +308,45 @@ void bornAMaster()
     printw(" Taxicab ");
     addch(ACS_CKBOARD);
 
+    move(4, 2);
+    addch(ACS_ULCORNER);
+    move(4, 2 + getMap()->SO_WIDTH + 1);
+    addch(ACS_URCORNER);
+
+    move(4 + getMap()->SO_HEIGHT, 2);
+    addch(ACS_LLCORNER);
+
+    move(5 + getMap()->SO_HEIGHT, 2 + getMap()->SO_WIDTH);
+    addch(ACS_LRCORNER);
+
+    move(4, 3);
+    for (a = 0; a < getMap()->SO_WIDTH; a++)
+        addch(ACS_S7);
+
+    move(5 + getMap()->SO_HEIGHT, 2);
+    for (a = 0; a < getMap()->SO_WIDTH + 1; a++)
+        addch(ACS_S7);
+
+    for (a = 0; a < getMap()->SO_HEIGHT; a++)
+    {
+        move(a + 5, 2);
+        addch(ACS_VLINE);
+        move(a + 5, 2 + getMap()->SO_WIDTH + 1);
+        addch(ACS_VLINE);
+    }
+
+    move(5 + getMap()->SO_HEIGHT, 2);
+    addch(ACS_LLCORNER);
+
+    move(5 + getMap()->SO_HEIGHT, 2 + getMap()->SO_WIDTH + 1);
+    addch(ACS_LRCORNER);
+
+    refresh();
+
     mvprintw(2, 2, "Waiting for taxis to fill the map... 0/%d   ", map->SO_TAXI);
 
     refresh();
-    int a;
+    int a, b;
     message placeHolder;
 
     a = 0;
@@ -344,11 +361,33 @@ void bornAMaster()
         else
         {
 
-            mvprintw(2, 2, "Waiting for taxis to fill the map... %d/%d  %d ", ++a, map->SO_TAXI, placeHolder.mtype);
+            mvprintw(2, 2, "Waiting for taxis to fill the map... %d/%d  ", ++a, map->SO_TAXI);
             refresh();
         }
     }
 
+    for (a = 0; a < getMap()->SO_WIDTH; a++)
+    {
+        for (b = 0; b < getMap()->SO_HEIGHT; b++)
+        {
+            move(b + 5, a + 3);
+            if (getMapCellAt(a, b)->maxElements == -1)
+            {
+                addch(ACS_CKBOARD);
+            }
+            else
+            {
+                if (getMapCellAt(a, b)->currentElements == 0)
+                {
+                    addch(ACS_BULLET);
+                }
+                else
+                {
+                    printw("%d", getMapCellAt(a, b)->currentElements);
+                }
+            }
+        }
+    }
     signal(SIGALRM, &alarmMaster);
     signal(SIGINT, &alarmMaster);
 
@@ -376,9 +415,9 @@ void bornAMaster()
     message kickoffMessage;
     kickoffMessage.mtype = MSG_KICKOFF;
 
-    move(3, 0);
+    move(2, 0);
     clrtoeol();
-    mvprintw(3, 2, "Kicked clients: %d/%d   ", a + 1, map->SO_SOURCES);
+    mvprintw(2, 2, "Kicked clients: %d/%d   ", a + 1, map->SO_SOURCES);
     refresh();
     for (a = 0; a < map->SO_SOURCES; a++)
     {
@@ -389,7 +428,7 @@ void bornAMaster()
         }
         else
         {
-            mvprintw(3, 2, "Kicked clients: %d/%d   ", a + 1, map->SO_SOURCES);
+            mvprintw(2, 2, "Kicked clients: %d/%d   ", a + 1, map->SO_SOURCES);
             refresh();
         };
     }
@@ -403,7 +442,7 @@ void bornAMaster()
     move(2, 0);
     clrtoeol();
     mvprintw(2, 2, "Active taxis: %d/%d   ", activeTaxi, map->SO_TAXI);
-            refresh();
+    refresh();
     while (1)
     {
         /* checking if someone's killed itself*/
