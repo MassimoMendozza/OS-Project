@@ -39,6 +39,7 @@ void alarmMaster(int sig)
     endwin();
     exit(EXIT_SUCCESS);
 }
+
 /*
 Simulation parameter
 */
@@ -158,7 +159,7 @@ void initializeMapCells()
 {
     int x, y;
     masterMap *map = addrstart;
-    mapCell *cells = map->map = getMapCellAt(0, 0);
+    mapCell *cells;
     map->cellsSemID = semget(ipcKey, map->SO_HEIGHT * map->SO_WIDTH, IPC_CREAT | 0666); /*initialization of the semaphores array*/
     initSemAvailable(map->cellsSemID, map->SO_HEIGHT * map->SO_WIDTH);
     union semun arg;
@@ -176,7 +177,7 @@ void initializeMapCells()
             cells->holdingTime = randFromRange(map->SO_TIMENSEC_MIN, map->SO_TIMENSEC_MAX);
             cells->currentElements = 0;
             cells->cantPutAnHole = 0;
-            cells->client = NULL;
+            cells->isAvailable = 1;
         }
     }
 }
@@ -229,6 +230,7 @@ void createHoles()
             {
                 found = 1;
                 getMapCellAt(x, y)->maxElements = -1;
+                getMapCellAt(x, y)->isAvailable = 0;
 
                 for (a = x - 1; a < x + 2; a++)
                 {
@@ -406,6 +408,25 @@ void bornAMaster()
         kill(getTaxi(a)->processid, SIGUSR1);
         mvprintw(2, 2, "Kicking the taxi... %d/%d", a + 1, map->SO_TAXI);
         refresh();
+    }
+
+    move(h - 1, 0);
+    clrtoeol();
+    mvprintw(h - 1, 0, "Status: Receiving alive message from taxis...");
+    refresh();
+
+    move(2, 0);
+    clrtoeol();
+
+    while (activeTaxi < map->SO_TAXI)
+    {
+        if (msgrcv(msgID, &placeHolder, sizeof(message), MSG_KICKOFF, IPC_NOWAIT) != -1)
+        {
+            activeTaxi++;
+            mvprintw(2, 2, "Taxi alive: %d/%d   ", activeTaxi, map->SO_TAXI);
+            refresh();
+            /*printf("Taxi n%d posizionato in x:%d, y:%d, cella a %d/%d\n", placeHolder.driverID, placeHolder.sourceX, placeHolder.sourceY, getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->currentElements, getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->maxElements);*/
+        }
     }
 
     move(h - 1, 0);

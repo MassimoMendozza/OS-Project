@@ -199,5 +199,8 @@ void taxiKickoff()
     alarm(getMap()->SO_TIMEOUT);
 
     /*Taxi si mette in attesa di richieste*/
-    msgrcv(msgID, &imHere, sizeof(message), MSG_CLIENT_CALL, 0);
+    while (1)
+    {
+        msgrcv(msgID, &imHere, sizeof(message), MSG_CLIENT_CALL, 0);
+    }
 }

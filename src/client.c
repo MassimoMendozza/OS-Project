@@ -44,44 +44,6 @@ void bornAClient(int myNumber)
         nanosleep(&request, &remaining);
     }
 
-    int x, y;
-    int found = 0;
-
-    for (x = rand() % getMap()->SO_WIDTH; x < getMap()->SO_WIDTH && !found; x++)
-    {
-        for (y = rand() % getMap()->SO_HEIGHT; y < getMap()->SO_HEIGHT && !found; y++)
-        {
-            if (getMapCellAt(x, y)->maxElements > -1)
-            {
-
-                if (reserveSem(getMap()->cellsSemID, (x * getMap()->SO_HEIGHT) + y) == -1)
-                {
-                    fprintf(stdout, "%s", strerror(errno));
-                }
-                else
-                {
-                    if (getMapCellAt(x, y)->client == NULL)
-                    {
-                        getMapCellAt(x, y)->client = myself;
-                        found = 1;
-                        myselfClient->posX = x;
-                        myselfClient->posY = y;
-                    }
-                    releaseSem(getMap()->cellsSemID, (x * getMap()->SO_HEIGHT) + y);
-                };
-            }
-        }
-        if ((x == getMap()->SO_WIDTH - 1) && (y == getMap()->SO_HEIGHT - 1))
-        {
-            x = y = 0;
-        }
-    }
-    if ((myself->posX == -1) && (myself->posY == -1))
-    {
-
-        exit(EXIT_FAILURE);
-    }
-
     clientKickoff();
 
     /*
@@ -93,9 +55,8 @@ void clientKickoff()
 {
 
     message imHere;
-    imHere.mtype = getpid();
 
-    struct timespec request = {0, 1000000};
+    struct timespec request = {0, 100000};
     struct timespec remaining;
 
     /*
@@ -108,83 +69,72 @@ void clientKickoff()
     while (1)
     {
         nanosleep(&request, &remaining);
-        imHere.clientID = myClientNumber;
-        imHere.mtype = MSG_CLIENT_CALL;
-        imHere.sourceX = myself->posX;
-        imHere.sourceY = myself->posY;
-        imHere.type = MSG_CLIENT_CALL;
 
         message placeHolder;
 
-        msgsnd(msgID, &imHere, sizeof(message), 0);
-        msgrcv(msgID, &placeHolder, sizeof(message), getpid(), 0);
-        msgrcv(msgID, &placeHolder, sizeof(message), getpid(), 0);
+        /* Cerco posizione in cui infilarmi */
+        int sourceX, sourceY, destX, destY;
+        int sourceFound, destFound;
+        sourceFound = destFound = 0;
 
-        /*
-
-        mettere dato in cella che dice che è già presa per destinazione
-        if(ok){
-            aggiorna posizione
-            int x, y;
-    int found = 0;
-
-    for (x = rand() % getMap()->SO_WIDTH; x < getMap()->SO_WIDTH && !found; x++)
-    {
-        for (y = rand() % getMap()->SO_HEIGHT; y < getMap()->SO_HEIGHT && !found; y++)
+        for (sourceX = rand() % getMap()->SO_WIDTH; sourceX < getMap()->SO_WIDTH && !sourceFound; sourceX++)
         {
-            if (getMapCellAt(x, y)->maxElements > -1)
+            for (sourceY = rand() % getMap()->SO_HEIGHT; sourceY < getMap()->SO_HEIGHT && !sourceFound; sourceY++)
             {
-                if (myself->posX != -1 && myself->posY != -1)
+                if (getMapCellAt(sourceX, sourceY)->maxElements > -1 && getMapCellAt(sourceX, sourceY)->isAvailable)
                 {
 
-                    if (reserveSem(getMap()->cellsSemID, (myself->posX * getMap()->SO_HEIGHT) + myself->posY) == -1)
+                    if (reserveSem(getMap()->cellsSemID, (sourceX * getMap()->SO_HEIGHT) + sourceY) == -1)
                     {
                         fprintf(stdout, "%s", strerror(errno));
                     }
-                }
-
-                if (reserveSem(getMap()->cellsSemID, (x * getMap()->SO_HEIGHT) + y) == -1)
-                {
-                    fprintf(stdout, "%s", strerror(errno));
-                }
-                else
-                {
-                    if (getMapCellAt(x, y)->client == NULL)
+                    else
                     {
-                        getMapCellAt(x, y)->client = myself;
-                        found = 1;
-                    }
-                    releaseSem(getMap()->cellsSemID, (x * getMap()->SO_HEIGHT) + y);
-                    if (myself->posX != -1 && myself->posY != -1)
-                    {
-
-                        getMapCellAt(myself->posX, myself->posY)->client = NULL;
-                        if (releaseSem(getMap()->cellsSemID, (myself->posX * getMap()->SO_HEIGHT) + myself->posY) == -1)
+                        getMapCellAt(sourceX, sourceY)->isAvailable = 0;
+                        sourceFound = 1;
+                        /* for annidato per cella dest */
+                        for (destX = rand() % getMap()->SO_WIDTH; destX < getMap()->SO_WIDTH && !destFound; destX++)
                         {
-                            fprintf(stdout, "%s", strerror(errno));
+                            for (destY = rand() % getMap()->SO_HEIGHT; destY < getMap()->SO_HEIGHT && !destFound; destY++)
+                            {
+                                if (getMapCellAt(destX, destY)->maxElements > -1 && getMapCellAt(destX, destY)->isAvailable)
+                                {
+
+                                    if (reserveSem(getMap()->cellsSemID, (destX * getMap()->SO_HEIGHT) + destY) == -1)
+                                    {
+                                        fprintf(stdout, "%s", strerror(errno));
+                                    }
+                                    else
+                                    {
+                                        getMapCellAt(destX, destY)->isAvailable = 0;
+                                        destFound = 1;
+
+                                        releaseSem(getMap()->cellsSemID, (destX * getMap()->SO_HEIGHT) + destY);
+                                    };
+                                }
+                            }
+                            if ((destX == getMap()->SO_WIDTH - 1) && (destY == getMap()->SO_HEIGHT - 1))
+                            {
+                                destX = destY = 0;
+                            }
                         }
-                    }
-                    myself->posX = x;
-                    myself->posY = y;
-                };
+                        releaseSem(getMap()->cellsSemID, (sourceX * getMap()->SO_HEIGHT) + sourceY);
+                    };
+                }
+            }
+            if ((sourceX == getMap()->SO_WIDTH - 1) && (sourceY == getMap()->SO_HEIGHT - 1))
+            {
+                sourceX = sourceY = 0;
             }
         }
-        if ((x == getMap()->SO_WIDTH - 1) && (y == getMap()->SO_HEIGHT - 1))
-        {
-            x = y = 0;
-        }
-    }
-    if ((myself->posX == -1) && (myself->posY == -1))
-    {
 
-        exit(EXIT_FAILURE);
-    }
+        imHere.clientID=myClientNumber;
+        imHere.sourceX=sourceX;
+        imHere.sourceY=sourceY;
+        imHere.destX=destX;
+        imHere.destX=destX;
+        imHere.mtype=MSG_CLIENT_CALL;
 
-        }else{
-            lascia perdere
-        }
-
-        come genero e tengo d'occhio la destinazione?
-        */
+        msgsnd(msgID, &imHere, sizeof(message), 0);
     }
 }
