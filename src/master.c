@@ -520,5 +520,11 @@ int main(int argc, char *argv[])
 
     beFruitful();
 
+    /*ipcrm*/
+
+    msgctl(msgID, IPC_RMID, NULL);
+    shmctl(shmID,IPC_RMID,NULL);
+    
+    system("ipcrm");
     return EXIT_SUCCESS;
 }
