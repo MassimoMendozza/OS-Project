@@ -23,12 +23,14 @@ FILE *config;
 char AttributeName[20];
 char EqualsPlaceHolder;
 int ParsedValue;
+int updateMap;
 
 key_t ipcKey;
 int projID;
 
 masterMap *map;
-int shmID, msgID, activeTaxi;
+int shmID, msgID, activeTaxi, updatedmap;
+updatedmap = 0;
 void *addrstart; /*the addres of the shared memory portion (first element is map)*/
 
 WINDOW *win;
@@ -38,6 +40,14 @@ void alarmMaster(int sig)
 {
     endwin();
     exit(EXIT_SUCCESS);
+}
+
+void updateMapHandler(int sig)
+{
+    signal(SIGUSR1, &updateMapHandler);
+    updateMap = 1;
+    updatedmap++;
+    mvprintw(0, 0, "MANNGGIALAPUTTANA %d", updatedmap);
 }
 
 /*
@@ -161,10 +171,10 @@ void initializeMapCells()
     masterMap *map = addrstart;
     mapCell *cells;
     map->cellsSemID = semget(ipcKey, map->SO_HEIGHT * map->SO_WIDTH, IPC_CREAT | 0666); /*initialization of the semaphores array*/
-    initSemAvailable(map->cellsSemID, map->SO_HEIGHT * map->SO_WIDTH);   /*forse inutile*/
+    initSemAvailable(map->cellsSemID, map->SO_HEIGHT * map->SO_WIDTH);
     union semun arg;
     arg.val = 1;
-    for (a = 0; a < (map->SO_HEIGHT * map->SO_WIDTH); a++) /*setting the array at 1*/
+    for (a = 0; a < (map->SO_HEIGHT * map->SO_WIDTH); a++) /*setting the array*/
     {
         semctl(map->cellsSemID, a, SETVAL, arg);
     }
@@ -205,7 +215,7 @@ void createHoles()
 {
     int a, b, c, x, y;
     masterMap *map = getMap();
-    mapCell *cells;         /*inutile*/
+    mapCell *cells;
 
     for (c = 0; c < map->SO_HOLES; c++)
     {
@@ -300,9 +310,10 @@ void beFruitful() /*creation of processes like taxi and client*/
     }
 }
 
-void bornAMaster()    /*graphic things*/
+void bornAMaster()
 {
     wmove(win, 0, 0);
+    getMap()->masterProcessID = getpid();
 
     for (a = 0; a < w; a++)
         addch(ACS_BULLET);
@@ -349,19 +360,16 @@ void bornAMaster()    /*graphic things*/
     mvprintw(2, 2, "Waiting for taxis to fill the map... 0/%d   ", map->SO_TAXI);
 
     refresh();
-
-                                                        /*end of graphic things*/
-
     int a, b;
     message placeHolder;
 
     a = 0;
     while (a < getMap()->SO_TAXI)
     {
-        if ((msgrcv(msgID, &placeHolder, sizeof(message), MSG_TAXI_CELL, 0)) == -1)   /*se un messaggio taxi è andato storto (ha trovato casella?)*/
+        if ((msgrcv(msgID, &placeHolder, sizeof(message), MSG_TAXI_CELL, 0)) == -1)
         {
 
-            /* printw("Can't receive message to kickoff taxi n%d", getTaxi(a)->processid);                                                                                                                                                       
+            /* printw("Can't receive message to kickoff taxi n%d", getTaxi(a)->processid);
             refresh();*/
         }
         else
@@ -372,7 +380,7 @@ void bornAMaster()    /*graphic things*/
         }
     }
 
-    for (a = 0; a < getMap()->SO_WIDTH; a++)      /*stampa mappina numerini*/
+    for (a = 0; a < getMap()->SO_WIDTH; a++)
     {
         for (b = 0; b < getMap()->SO_HEIGHT; b++)
         {
@@ -394,8 +402,10 @@ void bornAMaster()    /*graphic things*/
             }
         }
     }
+    updateMap = 0;
     signal(SIGALRM, &alarmMaster);
-    signal(SIGINT, &alarmMaster);   /*fine revisione*/
+    signal(SIGINT, &alarmMaster);
+    signal(SIGUSR1, &updateMapHandler);
 
     activeTaxi = 0;
 
@@ -462,24 +472,99 @@ void bornAMaster()    /*graphic things*/
     clrtoeol();
     mvprintw(2, 2, "Active taxis: %d/%d   ", activeTaxi, map->SO_TAXI);
     refresh();
+
+    int requestTaken, requestBegin, requestDone;
+    requestBegin = requestDone = requestTaken = 0;
     while (1)
     {
-        /* checking if someone's killed itself*/
+
         message placeHolder;
+        if ((msgrcv(msgID, &placeHolder, sizeof(message), MSG_TAXI_CELL, IPC_NOWAIT)) != -1)
+        {
+            kill(getTaxi(placeHolder.driverID)->processid, SIGUSR1);
+
+            reserveSem(getMap()->cellsSemID, (placeHolder.sourceX * getMap()->SO_HEIGHT) + placeHolder.sourceY);
+            getMapCellAt(placeHolder.sourceX,  placeHolder.sourceY)->currentElements--;
+            releaseSem(getMap()->cellsSemID, (placeHolder.sourceX * getMap()->SO_HEIGHT) +  placeHolder.sourceY);
+        } /* checking if someone's killed itself*/
         if (msgrcv(msgID, &placeHolder, sizeof(message), MSG_TIMEOUT, IPC_NOWAIT) != -1)
         {
             activeTaxi--;
-            mvprintw(2, 2, "Active taxis: %d/%d   ", activeTaxi, map->SO_TAXI);
+            move(2, 0);
+            clrtoeol();
+            mvprintw(2, 2, "Active taxis: %d/%d", activeTaxi, map->SO_TAXI);
+            if (fork() == 0)
+            {
+                bornATaxi(placeHolder.driverID);
+            }
             refresh();
             /*printf("Taxi n%d suicidato\n", placeHolder.driverID);*/
         }
         if (msgrcv(msgID, &placeHolder, sizeof(message), MSG_KICKOFF, IPC_NOWAIT) != -1)
         {
             activeTaxi++;
-            mvprintw(2, 2, "Active taxis: %d/%d   ", activeTaxi, map->SO_TAXI);
+            move(2, 0);
+            clrtoeol();
+            mvprintw(2, 2, "Active taxis: %d/%d", activeTaxi, map->SO_TAXI);
             refresh();
-            /*printf("Taxi n%d posizionato in x:%d, y:%d, cella a %d/%d\n", placeHolder.driverID, placeHolder.sourceX, placeHolder.sourceY, 
-            getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->currentElements, getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->maxElements);*/
+            /*printf("Taxi n%d posizionato in x:%d, y:%d, cella a %d/%d\n", placeHolder.driverID, placeHolder.sourceX, placeHolder.sourceY, getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->currentElements, getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->maxElements);*/
+        }
+        if (msgrcv(msgID, &placeHolder, sizeof(message), MSG_CLIENT_TAKEN, IPC_NOWAIT) != -1)
+        {
+            requestTaken++;
+            move(3, 0);
+            clrtoeol();
+            mvprintw(3, 2, "Requests\tTaken:%d\tStarted:%d\tEnded:%d", requestTaken, requestBegin, requestDone);
+            refresh();
+        }
+
+        if (msgrcv(msgID, &placeHolder, sizeof(message), MSG_REQUEST_BEGIN, IPC_NOWAIT) != -1)
+        {
+            requestBegin++;
+            updateMap = 1;
+            move(3, 0);
+            clrtoeol();
+            mvprintw(3, 2, "Requests\tTaken:%d\tStarted:%d\tEnded:%d", requestTaken, requestBegin, requestDone);
+            refresh();
+        }
+
+        if (msgrcv(msgID, &placeHolder, sizeof(message), MSG_REQUEST_DONE, IPC_NOWAIT) != -1)
+        {
+            requestDone++;
+            updateMap = 1;
+            move(3, 0);
+            clrtoeol();
+            mvprintw(3, 2, "Requests\tTaken:%d\tStarted:%d\tEnded:%d", requestTaken, requestBegin, requestDone);
+            refresh();
+        }
+
+        /* Checking if map is to update */
+        if (updateMap)
+        {
+            for (a = 0; a < getMap()->SO_WIDTH; a++)
+            {
+                for (b = 0; b < getMap()->SO_HEIGHT; b++)
+                {
+                    move(b + 5, a + 3);
+                    if (getMapCellAt(a, b)->maxElements == -1)
+                    {
+                        addch(ACS_CKBOARD);
+                    }
+                    else
+                    {
+                        if (getMapCellAt(a, b)->currentElements == 0)
+                        {
+                            addch(ACS_BULLET);
+                        }
+                        else
+                        {
+                            printw("%d", getMapCellAt(a, b)->currentElements);
+                        }
+                    }
+                }
+            }
+            updateMap = 0;
+            refresh();
         }
     };
 }
@@ -515,17 +600,11 @@ int main(int argc, char *argv[])
     }
 
     projID = rand();
-    ipcKey = ftok(configPath, projID); /*converte un pathname e un project identifier in una chiave ipc*/
+    ipcKey = ftok(configPath, projID);
 
     map = mapFromConfig(CONFIGFULLPATH);
 
     beFruitful();
 
-    /*ipcrm*/
-
-    msgctl(msgID, IPC_RMID, NULL);
-    shmctl(shmID,IPC_RMID,NULL);
-    free(map);
-    system("ipcrm");
     return EXIT_SUCCESS;
 }
