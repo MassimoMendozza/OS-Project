@@ -160,10 +160,10 @@ void initializeMapCells()
     masterMap *map = addrstart;
     mapCell *cells = map->map = getMapCellAt(0, 0);
     map->cellsSemID = semget(ipcKey, map->SO_HEIGHT * map->SO_WIDTH, IPC_CREAT | 0666); /*initialization of the semaphores array*/
-    initSemAvailable(map->cellsSemID, map->SO_HEIGHT * map->SO_WIDTH);
+    initSemAvailable(map->cellsSemID, map->SO_HEIGHT * map->SO_WIDTH);   /*forse inutile*/
     union semun arg;
     arg.val = 1;
-    for (a = 0; a < (map->SO_HEIGHT * map->SO_WIDTH); a++) /*setting the array*/
+    for (a = 0; a < (map->SO_HEIGHT * map->SO_WIDTH); a++) /*setting the array at 1*/
     {
         semctl(map->cellsSemID, a, SETVAL, arg);
     }
@@ -204,7 +204,7 @@ void createHoles()
 {
     int a, b, c, x, y;
     masterMap *map = getMap();
-    mapCell *cells;
+    mapCell *cells;         /*inutile*/
 
     for (c = 0; c < map->SO_HOLES; c++)
     {
@@ -298,7 +298,7 @@ void beFruitful() /*creation of processes like taxi and client*/
     }
 }
 
-void bornAMaster()
+void bornAMaster()    /*graphic things*/
 {
     wmove(win, 0, 0);
 
@@ -347,16 +347,19 @@ void bornAMaster()
     mvprintw(2, 2, "Waiting for taxis to fill the map... 0/%d   ", map->SO_TAXI);
 
     refresh();
+
+                                                        /*end of graphic things*/
+
     int a, b;
     message placeHolder;
 
     a = 0;
     while (a < getMap()->SO_TAXI)
     {
-        if ((msgrcv(msgID, &placeHolder, sizeof(message), MSG_TAXI_CELL, 0)) == -1)
+        if ((msgrcv(msgID, &placeHolder, sizeof(message), MSG_TAXI_CELL, 0)) == -1)   /*se un messaggio taxi è andato storto (ha trovato casella?)*/
         {
 
-            /* printw("Can't receive message to kickoff taxi n%d", getTaxi(a)->processid);
+            /* printw("Can't receive message to kickoff taxi n%d", getTaxi(a)->processid);                                                                                                                                                       
             refresh();*/
         }
         else
@@ -367,7 +370,7 @@ void bornAMaster()
         }
     }
 
-    for (a = 0; a < getMap()->SO_WIDTH; a++)
+    for (a = 0; a < getMap()->SO_WIDTH; a++)      /*stampa mappina numerini*/
     {
         for (b = 0; b < getMap()->SO_HEIGHT; b++)
         {
@@ -390,7 +393,7 @@ void bornAMaster()
         }
     }
     signal(SIGALRM, &alarmMaster);
-    signal(SIGINT, &alarmMaster);
+    signal(SIGINT, &alarmMaster);   /*fine revisione*/
 
     activeTaxi = 0;
 
@@ -490,7 +493,7 @@ int main(int argc, char *argv[])
     }
 
     projID = rand();
-    ipcKey = ftok(configPath, projID);
+    ipcKey = ftok(configPath, projID); /*converte un pathname e un project identifier in una chiave ipc*/
 
     map = mapFromConfig(CONFIGFULLPATH);
 
