@@ -23,12 +23,14 @@ FILE *config;
 char AttributeName[20];
 char EqualsPlaceHolder;
 int ParsedValue;
+int updateMap;
 
 key_t ipcKey;
 int projID;
 
 masterMap *map;
-int shmID, msgID, activeTaxi;
+int shmID, msgID, activeTaxi, updatedmap;
+updatedmap = 0;
 void *addrstart; /*the addres of the shared memory portion (first element is map)*/
 
 WINDOW *win;
@@ -38,6 +40,14 @@ void alarmMaster(int sig)
 {
     endwin();
     exit(EXIT_SUCCESS);
+}
+
+void updateMapHandler(int sig)
+{
+    signal(SIGUSR1, &updateMapHandler);
+    updateMap = 1;
+    updatedmap++;
+    mvprintw(0, 0, "MANNGGIALAPUTTANA %d", updatedmap);
 }
 
 /*
@@ -303,6 +313,7 @@ void beFruitful() /*creation of processes like taxi and client*/
 void bornAMaster()
 {
     wmove(win, 0, 0);
+    getMap()->masterProcessID = getpid();
 
     for (a = 0; a < w; a++)
         addch(ACS_BULLET);
@@ -391,8 +402,10 @@ void bornAMaster()
             }
         }
     }
+    updateMap = 0;
     signal(SIGALRM, &alarmMaster);
     signal(SIGINT, &alarmMaster);
+    signal(SIGUSR1, &updateMapHandler);
 
     activeTaxi = 0;
 
@@ -459,23 +472,99 @@ void bornAMaster()
     clrtoeol();
     mvprintw(2, 2, "Active taxis: %d/%d   ", activeTaxi, map->SO_TAXI);
     refresh();
+
+    int requestTaken, requestBegin, requestDone;
+    requestBegin = requestDone = requestTaken = 0;
     while (1)
     {
-        /* checking if someone's killed itself*/
+
         message placeHolder;
+        if ((msgrcv(msgID, &placeHolder, sizeof(message), MSG_TAXI_CELL, IPC_NOWAIT)) != -1)
+        {
+            kill(getTaxi(placeHolder.driverID)->processid, SIGUSR1);
+
+            reserveSem(getMap()->cellsSemID, (placeHolder.sourceX * getMap()->SO_HEIGHT) + placeHolder.sourceY);
+            getMapCellAt(placeHolder.sourceX,  placeHolder.sourceY)->currentElements--;
+            releaseSem(getMap()->cellsSemID, (placeHolder.sourceX * getMap()->SO_HEIGHT) +  placeHolder.sourceY);
+        } /* checking if someone's killed itself*/
         if (msgrcv(msgID, &placeHolder, sizeof(message), MSG_TIMEOUT, IPC_NOWAIT) != -1)
         {
             activeTaxi--;
-            mvprintw(2, 2, "Active taxis: %d/%d   ", activeTaxi, map->SO_TAXI);
+            move(2, 0);
+            clrtoeol();
+            mvprintw(2, 2, "Active taxis: %d/%d", activeTaxi, map->SO_TAXI);
+            if (fork() == 0)
+            {
+                bornATaxi(placeHolder.driverID);
+            }
             refresh();
             /*printf("Taxi n%d suicidato\n", placeHolder.driverID);*/
         }
         if (msgrcv(msgID, &placeHolder, sizeof(message), MSG_KICKOFF, IPC_NOWAIT) != -1)
         {
             activeTaxi++;
-            mvprintw(2, 2, "Active taxis: %d/%d   ", activeTaxi, map->SO_TAXI);
+            move(2, 0);
+            clrtoeol();
+            mvprintw(2, 2, "Active taxis: %d/%d", activeTaxi, map->SO_TAXI);
             refresh();
             /*printf("Taxi n%d posizionato in x:%d, y:%d, cella a %d/%d\n", placeHolder.driverID, placeHolder.sourceX, placeHolder.sourceY, getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->currentElements, getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->maxElements);*/
+        }
+        if (msgrcv(msgID, &placeHolder, sizeof(message), MSG_CLIENT_TAKEN, IPC_NOWAIT) != -1)
+        {
+            requestTaken++;
+            move(3, 0);
+            clrtoeol();
+            mvprintw(3, 2, "Requests\tTaken:%d\tStarted:%d\tEnded:%d", requestTaken, requestBegin, requestDone);
+            refresh();
+        }
+
+        if (msgrcv(msgID, &placeHolder, sizeof(message), MSG_REQUEST_BEGIN, IPC_NOWAIT) != -1)
+        {
+            requestBegin++;
+            updateMap = 1;
+            move(3, 0);
+            clrtoeol();
+            mvprintw(3, 2, "Requests\tTaken:%d\tStarted:%d\tEnded:%d", requestTaken, requestBegin, requestDone);
+            refresh();
+        }
+
+        if (msgrcv(msgID, &placeHolder, sizeof(message), MSG_REQUEST_DONE, IPC_NOWAIT) != -1)
+        {
+            requestDone++;
+            updateMap = 1;
+            move(3, 0);
+            clrtoeol();
+            mvprintw(3, 2, "Requests\tTaken:%d\tStarted:%d\tEnded:%d", requestTaken, requestBegin, requestDone);
+            refresh();
+        }
+
+        /* Checking if map is to update */
+        if (updateMap)
+        {
+            for (a = 0; a < getMap()->SO_WIDTH; a++)
+            {
+                for (b = 0; b < getMap()->SO_HEIGHT; b++)
+                {
+                    move(b + 5, a + 3);
+                    if (getMapCellAt(a, b)->maxElements == -1)
+                    {
+                        addch(ACS_CKBOARD);
+                    }
+                    else
+                    {
+                        if (getMapCellAt(a, b)->currentElements == 0)
+                        {
+                            addch(ACS_BULLET);
+                        }
+                        else
+                        {
+                            printw("%d", getMapCellAt(a, b)->currentElements);
+                        }
+                    }
+                }
+            }
+            updateMap = 0;
+            refresh();
         }
     };
 }

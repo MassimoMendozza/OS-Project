@@ -17,6 +17,8 @@ int msgID;
 int myClientNumber;
 person *myselfClient;
 
+FILE *fp;
+
 int goOn;
 void kickoffClientHandler(int a)
 {
@@ -30,6 +32,7 @@ void bornAClient(int myNumber)
     myselfClient->processid = getpid();
     myselfClient->number = myNumber;
     myselfClient->isOnTaxi = 0;
+    fp = fopen("movement.txt", "ab+");
 
     myClientNumber = myNumber;
 
@@ -53,10 +56,10 @@ void bornAClient(int myNumber)
 
 void clientKickoff()
 {
-
+    srand(getpid());
     message imHere;
 
-    struct timespec request = {0, 100000};
+    struct timespec request = {0, 500000000};
     struct timespec remaining;
 
     /*
@@ -68,7 +71,6 @@ void clientKickoff()
     */
     while (1)
     {
-        nanosleep(&request, &remaining);
 
         message placeHolder;
 
@@ -108,6 +110,8 @@ void clientKickoff()
                                     {
                                         getMapCellAt(destX, destY)->isAvailable = 0;
                                         destFound = 1;
+                                        imHere.destX = destX;
+                                        imHere.destY = destY;
 
                                         releaseSem(getMap()->cellsSemID, (destX * getMap()->SO_HEIGHT) + destY);
                                     };
@@ -118,6 +122,8 @@ void clientKickoff()
                                 destX = destY = 0;
                             }
                         }
+                        imHere.sourceX = sourceX;
+                        imHere.sourceY = sourceY;
                         releaseSem(getMap()->cellsSemID, (sourceX * getMap()->SO_HEIGHT) + sourceY);
                     };
                 }
@@ -128,13 +134,13 @@ void clientKickoff()
             }
         }
 
-        imHere.clientID=myClientNumber;
-        imHere.sourceX=sourceX;
-        imHere.sourceY=sourceY;
-        imHere.destX=destX;
-        imHere.destX=destX;
-        imHere.mtype=MSG_CLIENT_CALL;
+        imHere.clientID = myClientNumber;
+        imHere.mtype = MSG_CLIENT_CALL;
 
-        msgsnd(msgID, &imHere, sizeof(message), 0);
+        nanosleep(&request, &remaining);
+        if (msgsnd(msgID, &imHere, sizeof(message), 0) == -1)
+        {
+            printf("%s", strerror(errno));
+        }
     }
 }
