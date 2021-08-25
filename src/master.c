@@ -478,7 +478,8 @@ void bornAMaster()    /*graphic things*/
             activeTaxi++;
             mvprintw(2, 2, "Active taxis: %d/%d   ", activeTaxi, map->SO_TAXI);
             refresh();
-            /*printf("Taxi n%d posizionato in x:%d, y:%d, cella a %d/%d\n", placeHolder.driverID, placeHolder.sourceX, placeHolder.sourceY, getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->currentElements, getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->maxElements);*/
+            /*printf("Taxi n%d posizionato in x:%d, y:%d, cella a %d/%d\n", placeHolder.driverID, placeHolder.sourceX, placeHolder.sourceY, 
+            getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->currentElements, getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->maxElements);*/
         }
     };
 }
@@ -524,7 +525,7 @@ int main(int argc, char *argv[])
 
     msgctl(msgID, IPC_RMID, NULL);
     shmctl(shmID,IPC_RMID,NULL);
-    
+    free(map);
     system("ipcrm");
     return EXIT_SUCCESS;
 }
