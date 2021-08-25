@@ -1,12 +1,12 @@
 #ifndef TAXIELEMENTS_H
 #define TAXIELEMENTS_H
 #include <sys/types.h>
-#define MSG_KICKOFF 0
-#define MSG_TIMEOUT 1
-#define MSG_TAXI_CELL 2
-#define MSG_CLIENT_CELL 3
-#define MSG_CLIENT_CALL 4
-#define MSG_CLIENT_TAKEN 5
+#define MSG_KICKOFF 1
+#define MSG_TIMEOUT 2
+#define MSG_TAXI_CELL 3
+#define MSG_CLIENT_CELL 4
+#define MSG_CLIENT_CALL 5
+#define MSG_CLIENT_TAKEN 6
 
 
 typedef struct _person /*oggetto persona*/
@@ -32,8 +32,7 @@ typedef struct _taxi  /*oggetto taxi*/
 
 typedef struct _mapCell  /*oggetto mappa della città*/
 {
-	int maxElements, currentElements, holdingTime, cantPutAnHole;
-	person *client;
+	int maxElements, currentElements, holdingTime, cantPutAnHole, isAvailable;
 } mapCell;
 
 
