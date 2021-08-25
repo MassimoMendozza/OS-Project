@@ -7,14 +7,14 @@ typedef struct _node{
     int finished;
     int lengthpath;
     /*many more*/
-}Node
+}Node;
 
 
 typedef struct _superarray{
     Node *first;
     int status;
     int sourceX, sourceY, destX, destY;
-}SuperArray
+}SuperArray;
 
 SuperArray *creator(){
 
@@ -32,4 +32,34 @@ Node *addRide(SuperArray queue, /**/){
     queue->first=x;
 
     return x;
+}
+
+void setAborted(SuperArray queue){
+    queue->aborted++;
+    return;
+}
+
+void setFinished(SuperArray queue){
+    queue->finished++;
+    return;
+}
+
+void setLengthPath(SuperArray queue, int km){
+    queue->lengthpath=queue->lengthpath+km;
+    return;
+}
+
+
+
+int getAborted(SuperArray queue){
+    return queue->aborted;
+    
+}
+
+int getFinished(SuperArray queue){
+    return queue->finished++;
+}
+
+int getLengthPath(SuperArray queue){
+    return queue->lengthpath=queue;
 }
