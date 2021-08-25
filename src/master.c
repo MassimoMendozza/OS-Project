@@ -39,6 +39,8 @@ int h, w, a;
 void alarmMaster(int sig)
 {
     endwin();
+    msgctl(msgID, IPC_RMID, NULL);
+    shmctl(shmID,IPC_RMID,NULL);
     exit(EXIT_SUCCESS);
 }
 
