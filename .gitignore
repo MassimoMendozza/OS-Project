@@ -54,3 +54,4 @@ dkms.conf
 .vscode/
 bin/
 build/
+movement.txt
