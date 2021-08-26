@@ -8,16 +8,13 @@
 
 #include <time.h>
 #include <sys/types.h>
+#include <errno.h>
 
-#ifndef SHMUTILS_H
-#define SHMUTILS_H
 #include "shmUtils.h"
-#endif
-#ifndef TAXIELEMENTS_H
 #include "TaxiElements.h"
-#endif
+#include "BinSemaphores.h"
 
-int msgID;
+int myNumber, shmID, msgID;
 int myTaxiNumber;
 int goOn;
 int alarmInsideSem;
@@ -38,9 +35,18 @@ void kickoffHandler(int a)
     goOn = 0;
 }
 
-void bornATaxi(int myNumber)
+int main(int argc, char *argv[])
 {
+    myNumber = atoi(argv[1]);
+    shmID = atoi(argv[2]);
+    msgID = atoi(argv[3]);
 
+    void *addrstart = shmat(shmID, NULL, 0);
+    if (addrstart == -1)
+    {
+        strerror(errno);
+    }
+    setAddrstart(addrstart);
     srand(getpid());
     fp = fopen("movement.txt", "ab+");
 
@@ -126,8 +132,17 @@ static void alarmHandler(int signalNum)
     killNotification.type = MSG_TIMEOUT;
     killNotification.mtype = MSG_TIMEOUT;
     msgsnd(msgID, &killNotification, sizeof(message), 0);
+    reserveSem(getMap()->cellsSemID, ( myself->posX * getMap()->SO_HEIGHT) +  myself->posY);
+    getMapCellAt( myself->posX,  myself->posY)->currentElements--;
+    releaseSem(getMap()->cellsSemID, ( myself->posX * getMap()->SO_HEIGHT) +  myself->posY);
+    if ((destX != -1))
+    {
+        reserveSem(getMap()->cellsSemID, (destX * getMap()->SO_HEIGHT) +destY);
+        getMapCellAt(destX, destY)->isAvailable = 1;
+        releaseSem(getMap()->cellsSemID, (destX * getMap()->SO_HEIGHT) + destY);
+    }
     fclose(fp);
-    exit(EXIT_FAILURE);
+    raise(SIGKILL);
 }
 void moveMyselfIn(int destX, int destY)
 {
@@ -149,7 +164,7 @@ void moveMyselfIn(int destX, int destY)
     else
     {
 
-        fprintf(fp, "%d\tWAITING\n", getpid());
+        /* */fprintf(fp, "%d\tWAITING to enter x:%d y:%d\n", getpid(), destX, destY); 
     }
 
     releaseSem(getMap()->cellsSemID, (originX * getMap()->SO_HEIGHT) + originY);
@@ -163,7 +178,7 @@ void moveMyselfIn(int destX, int destY)
 
     struct timespec request = {0, getMapCellAt(destX, destY)->holdingTime};
     struct timespec remaining;
-    fprintf(fp, "%d\tx:%d y:%d\n", getpid(), myself->posX, myself->posY);
+    /* */fprintf(fp, "%d\tx:%d y:%d\n", getpid(), myself->posX, myself->posY); 
     /*  kill(getMap()->masterProcessID, SIGUSR1);*/
     nanosleep(&request, &remaining);
 };
@@ -245,7 +260,7 @@ void taxiKickoff()
         requestPlaceholder.driverID = myTaxiNumber;
         requestPlaceholder.mtype = MSG_CLIENT_TAKEN;
 
-        fprintf(fp, "%d\tx:%d y:%d\tRICHIESTA\n", getpid(), sourceX, sourceY);
+        /* */fprintf(fp, "%d\tx:%d y:%d\tRICHIESTA\n", getpid(), sourceX, sourceY); 
         msgsnd(msgID, &requestPlaceholder, sizeof(message), 0);
 
         driveTaxi(sourceX, sourceY);
@@ -262,8 +277,8 @@ void taxiKickoff()
             raise(SIGALRM);
         }
         alarm(getMap()->SO_TIMEOUT);
-
-        fprintf(fp, "%d\tx:%d y:%d\PRELEVATO\n", getpid(), sourceX, sourceY);
+/*  */fprintf(fp, "%d\tx:%d y:%d\PRELEVATO\n", getpid(), sourceX, sourceY);
+        
         requestPlaceholder.mtype = MSG_REQUEST_BEGIN;
         msgsnd(msgID, &requestPlaceholder, sizeof(message), 0);
 
@@ -281,7 +296,8 @@ void taxiKickoff()
             raise(SIGALRM);
         }
         alarm(getMap()->SO_TIMEOUT);
-        fprintf(fp, "%d\tx:%d y:%d\ARRIVATO\n", getpid(), sourceX, sourceY);
+        /* */ fprintf(fp, "%d\tx:%d y:%d\ARRIVATO\n", getpid(), sourceX, sourceY);
+        
         requestPlaceholder.mtype = MSG_REQUEST_DONE;
         msgsnd(msgID, &requestPlaceholder, sizeof(message), 0);
     }

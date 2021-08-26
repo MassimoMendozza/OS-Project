@@ -3,11 +3,13 @@
 #include <stdlib.h>
 #include <time.h>
 #include <ncurses.h>
+#include <unistd.h>
 
 #include <semaphore.h>
 
 #include <sys/shm.h>
 #include <errno.h>
+#include <signal.h>
 
 #include "TaxiCab.h"
 
@@ -42,10 +44,16 @@ void alarmMaster(int sig)
     int a;
     for (a = 0; a < getMap()->SO_SOURCES; a++)
     {
+        char command[50];
+        sprintf(command, "kill %d", getPerson(a)->processid);
+        system(command);
         kill(SIGKILL, getPerson(a)->processid);
     }
     for (a = 0; a < getMap()->SO_TAXI; a++)
     {
+        char command[50];
+        sprintf(command, "kill %d", getTaxi(a)->processid);
+        system(command);
         kill(SIGKILL, getTaxi(a)->processid);
     }
     msgctl(msgID, IPC_RMID, NULL);
@@ -291,25 +299,47 @@ void beFruitful() /*creation of processes like taxi and client*/
         if (fork() == 0)
         {
             shouldIBeATaxi = 1;
-            bornATaxi(a);
-            a = map->SO_TAXI; /*break*/
+            char numberString[10];
+            char shmString[10];
+            char msgString[10];
+            sprintf(numberString, "%d", a);
+            sprintf(shmString, "%d", shmID);
+            sprintf(msgString, "%d", msgID);
+
+            char *paramList[] = {"./bin/taxi", numberString, shmString, msgString, NULL};
+            char *environ[] = {NULL};
+            if (execve("./bin/taxi", paramList, environ) == -1)
+            {
+                printf("%s", strerror(errno));
+            };
+            break;
         }
     }
     if (!shouldIBeATaxi)
     {
+
         for (a = 0; a < map->SO_SOURCES; a++)
         {
             if (fork() == 0)
             {
                 shouldIBeAClient = 1;
-                bornAClient(a);
-                a = map->SO_SOURCES;
+                char numberString[10];
+                char shmString[10];
+                char msgString[10];
+                sprintf(numberString, "%d", a);
+                sprintf(shmString, "%d", shmID);
+                sprintf(msgString, "%d", msgID);
+
+                char *const paramList[] = {"./bin/source", numberString, shmString, msgString, NULL};
+                char *environ[] = {NULL};
+                execve("./bin/source", paramList, environ);
+                break;
             }
         }
     }
-
-    if (!shouldIBeAClient && !shouldIBeATaxi)
+    if ((!shouldIBeAClient) && (!shouldIBeATaxi))
     {
+
         bornAMaster();
     }
 }
@@ -476,8 +506,8 @@ void bornAMaster()
     mvprintw(2, 2, "Active taxis: %d/%d   ", activeTaxi, map->SO_TAXI);
     refresh();
 
-    int requestTaken, requestBegin, requestDone, requestAborted;
-    requestBegin = requestDone = requestTaken = requestAborted = 0;
+    int requestTaken, requestBegin, requestDone, requestAborted, resurrectedTaxi;
+    requestBegin = requestDone = requestTaken = requestAborted = resurrectedTaxi = 0;
     while (1)
     {
 
@@ -485,27 +515,40 @@ void bornAMaster()
         if ((msgrcv(msgID, &placeHolder, sizeof(message), MSG_TAXI_CELL, IPC_NOWAIT)) != -1)
         {
             kill(getTaxi(placeHolder.driverID)->processid, SIGUSR1);
-
+            resurrectedTaxi++;
         } /* checking if someone's killed itself*/
         if (msgrcv(msgID, &placeHolder, sizeof(message), MSG_TIMEOUT, IPC_NOWAIT) != -1)
         {
+
+            char command[50];
+            sprintf(command, "kill %d", getTaxi(placeHolder.driverID)->processid);
+            system(command);
             activeTaxi--;
             move(2, 0);
             clrtoeol();
-            reserveSem(getMap()->cellsSemID, (placeHolder.sourceX * getMap()->SO_HEIGHT) + placeHolder.sourceY);
-            getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->currentElements--;
-            releaseSem(getMap()->cellsSemID, (placeHolder.sourceX * getMap()->SO_HEIGHT) + placeHolder.sourceY);
-            if((placeHolder.destX!=-1)){
-                reserveSem(getMap()->cellsSemID, (placeHolder.destX * getMap()->SO_HEIGHT) + placeHolder.destY);
-            getMapCellAt(placeHolder.destX, placeHolder.destY)->isAvailable=1;
-            releaseSem(getMap()->cellsSemID, (placeHolder.destX * getMap()->SO_HEIGHT) + placeHolder.destY);
             
-            }
             requestAborted++;
-            mvprintw(2, 2, "Active taxis: %d/%d", activeTaxi, map->SO_TAXI);
-            if (fork() == 0)
+            mvprintw(2, 2, "Active taxis: %d/%d\t Resurrected taxis:%d", activeTaxi, map->SO_TAXI, resurrectedTaxi);
+            
+            int pid = fork();
+            if (pid == 0)
             {
-                bornATaxi(placeHolder.driverID);
+                char numberString[10];
+                char shmString[10];
+                char msgString[10];
+                sprintf(numberString, "%d", placeHolder.driverID);
+                sprintf(shmString, "%d", shmID);
+                sprintf(msgString, "%d", msgID);
+
+                char *paramList[] = {"./bin/taxi", numberString, shmString, msgString, NULL};
+                char *environ[] = {NULL};
+                if (execve("./bin/taxi", paramList, environ) == -1)
+                {
+                    fprintf(stdout, "%s", strerror(errno));
+                };
+            }else if(pid<0){
+                fprintf(stderr, "%s", strerror(errno));
+                exit(-1);
             }
             refresh();
             /*printf("Taxi n%d suicidato\n", placeHolder.driverID);*/
@@ -515,7 +558,7 @@ void bornAMaster()
             activeTaxi++;
             move(2, 0);
             clrtoeol();
-            mvprintw(2, 2, "Active taxis: %d/%d", activeTaxi, map->SO_TAXI);
+            mvprintw(2, 2, "Active taxis: %d/%d\t Resurrected taxis:%d", activeTaxi, map->SO_TAXI, resurrectedTaxi);
             refresh();
             /*printf("Taxi n%d posizionato in x:%d, y:%d, cella a %d/%d\n", placeHolder.driverID, placeHolder.sourceX, placeHolder.sourceY, getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->currentElements, getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->maxElements);*/
         }
@@ -526,7 +569,7 @@ void bornAMaster()
             move(3, 0);
             clrtoeol();
             mvprintw(3, 2, "Requests\tTaken:%d\tStarted:%d\tEnded:%d\tAborted:%d", requestTaken, requestBegin, requestDone, requestAborted);
-            refresh();
+
         }
 
         if (msgrcv(msgID, &placeHolder, sizeof(message), MSG_REQUEST_BEGIN, IPC_NOWAIT) != -1)
@@ -536,7 +579,7 @@ void bornAMaster()
             move(3, 0);
             clrtoeol();
             mvprintw(3, 2, "Requests\tTaken:%d\tStarted:%d\tEnded:%d\tAborted:%d", requestTaken, requestBegin, requestDone, requestAborted);
-            refresh();
+
         }
 
         if (msgrcv(msgID, &placeHolder, sizeof(message), MSG_REQUEST_DONE, IPC_NOWAIT) != -1)
@@ -546,7 +589,7 @@ void bornAMaster()
             move(3, 0);
             clrtoeol();
             mvprintw(3, 2, "Requests\tTaken:%d\tStarted:%d\tEnded:%d\tAborted:%d", requestTaken, requestBegin, requestDone, requestAborted);
-            refresh();
+
         }
 
         /* Checking if map is to update */

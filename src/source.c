@@ -4,16 +4,14 @@
 #include <time.h>
 #include <semaphore.h>
 #include <sys/shm.h>
+#include <signal.h>
+#include<errno.h>
 
-#ifndef SHMUTILS_H
-#define SHMUTILS_H
 #include "shmUtils.h"
-#endif
-#ifndef TAXIELEMENTS_H
 #include "TaxiElements.h"
-#endif
+#include "BinSemaphores.h"
 
-int msgID;
+int myNumber, shmID, msgID;
 int myClientNumber;
 person *myselfClient;
 
@@ -25,9 +23,20 @@ void kickoffClientHandler(int a)
     goOn = 0;
 }
 
-void bornAClient(int myNumber)
+int main(int argc, char *argv[])
 {
     /*printf("Client n%d with pid %d\n", myNumber, getpid());*/
+    
+    myNumber = atoi(argv[1]);
+    shmID=atoi(argv[2]);
+    msgID=atoi(argv[3]);
+
+    void *addrstart=shmat(shmID, NULL, 0);
+    if(addrstart==-1){
+        strerror(errno);
+    }
+    setAddrstart(addrstart);
+
     myselfClient = getPerson(myNumber);
     myselfClient->processid = getpid();
     myselfClient->number = myNumber;
@@ -79,6 +88,7 @@ void clientKickoff()
         int sourceFound, destFound;
         sourceFound = destFound = 0;
 
+
         for (sourceX = rand() % getMap()->SO_WIDTH; sourceX < getMap()->SO_WIDTH && !sourceFound; sourceX++)
         {
             for (sourceY = rand() % getMap()->SO_HEIGHT; sourceY < getMap()->SO_HEIGHT && !sourceFound; sourceY++)
@@ -106,15 +116,15 @@ void clientKickoff()
                                     {
                                        /* fprintf(stdout, "%s", strerror(errno));
                                      */ }
-                                    else
-                                    {
-                                        getMapCellAt(destX, destY)->isAvailable = 0;
-                                        destFound = 1;
-                                        imHere.destX = destX;
-                                        imHere.destY = destY;
+                                       else
+                                       {
+                                           getMapCellAt(destX, destY)->isAvailable = 0;
+                                           destFound = 1;
+                                           imHere.destX = destX;
+                                           imHere.destY = destY;
 
-                                        releaseSem(getMap()->cellsSemID, (destX * getMap()->SO_HEIGHT) + destY);
-                                    };
+                                           releaseSem(getMap()->cellsSemID, (destX * getMap()->SO_HEIGHT) + destY);
+                                       };
                                 }
                             }
                             if ((destX == getMap()->SO_WIDTH - 1) && (destY == getMap()->SO_HEIGHT - 1))
@@ -131,8 +141,10 @@ void clientKickoff()
             if ((sourceX == getMap()->SO_WIDTH - 1) && (sourceY == getMap()->SO_HEIGHT - 1))
             {
                 sourceX = sourceY = 0;
-            }
+            }        
         }
+        
+
 
         imHere.clientID = myClientNumber;
         imHere.mtype = MSG_CLIENT_CALL;
