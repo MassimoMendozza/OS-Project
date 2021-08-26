@@ -52,9 +52,7 @@ typedef struct _message /*oggetto messaggio (?)*/
 {
 	long mtype;
 	int sourceX, sourceY, destX, destY;
-	int clientID;
 	int driverID;
-	int type;
 } message;
 
 

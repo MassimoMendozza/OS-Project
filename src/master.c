@@ -10,6 +10,7 @@
 #include <sys/shm.h>
 #include <errno.h>
 #include <signal.h>
+#include <wait.h>
 
 #include "TaxiCab.h"
 
@@ -26,6 +27,7 @@ char AttributeName[20];
 char EqualsPlaceHolder;
 int ParsedValue;
 int updateMap;
+int keepOn;
 
 key_t ipcKey;
 int projID;
@@ -40,27 +42,7 @@ int h, w, a;
 
 void alarmMaster(int sig)
 {
-    endwin();
-    int a;
-    for (a = 0; a < getMap()->SO_SOURCES; a++)
-    {
-        char command[50];
-        sprintf(command, "kill %d", getPerson(a)->processid);
-        system(command);
-        kill(SIGKILL, getPerson(a)->processid);
-    }
-    for (a = 0; a < getMap()->SO_TAXI; a++)
-    {
-        char command[50];
-        sprintf(command, "kill %d", getTaxi(a)->processid);
-        system(command);
-        kill(SIGKILL, getTaxi(a)->processid);
-    }
-    msgctl(msgID, IPC_RMID, NULL);
-    shmctl(shmID, IPC_RMID, NULL);
-    semctl(shmID, 1200, IPC_RMID);
-    /*remove sme array*/
-    exit(EXIT_SUCCESS);
+    keepOn=0;
 }
 
 /*
@@ -347,6 +329,7 @@ void beFruitful() /*creation of processes like taxi and client*/
 
 void bornAMaster()
 {
+    keepOn=1;
     wmove(win, 0, 0);
     getMap()->masterProcessID = getpid();
 
@@ -509,7 +492,7 @@ void bornAMaster()
 
     int requestTaken, requestBegin, requestDone, requestAborted, resurrectedTaxi;
     requestBegin = requestDone = requestTaken = requestAborted = resurrectedTaxi = 0;
-    while (1)
+    while (keepOn)
     {
 
         message placeHolder;
@@ -521,9 +504,8 @@ void bornAMaster()
         if (msgrcv(msgID, &placeHolder, sizeof(message), MSG_TIMEOUT, IPC_NOWAIT) != -1)
         {
 
-            char command[50];
-            sprintf(command, "kill %d", getTaxi(placeHolder.driverID)->processid);
-            system(command);
+            kill(getTaxi(placeHolder.driverID)->processid, SIGKILL);
+            
             activeTaxi--;
             move(2, 0);
             clrtoeol();
@@ -622,6 +604,34 @@ void bornAMaster()
             refresh();
         }
     };
+
+    semctl(getMap()->cellsSemID, 1200, IPC_RMID);
+    msgctl(msgID, IPC_RMID, NULL);
+    shmctl(shmID, IPC_RMID, NULL);
+    move(h - 1, 0);
+    clrtoeol();
+    mvprintw(h - 1, 0, "Status: Simulation's done, press any key to close.");
+    getch();
+    for (a = 0; a < getMap()->SO_SOURCES; a++)
+    {
+        /*  char command[50];
+        sprintf(command, "kill %d", getPerson(a)->processid);
+        system(command);*/
+        kill(getPerson(a)->processid, SIGKILL);
+        waitpid(getPerson(a)->processid ,NULL, WNOHANG);
+    }
+    for (a = 0; a < getMap()->SO_TAXI; a++)
+    {
+        /* char command[50];
+        sprintf(command, "kill %d", getTaxi(a)->processid);
+        system(command);*/ 
+        if(kill(getTaxi(a)->processid,SIGKILL)==-1){
+            fprintf(stdout,"%s", strerror(errno));
+        };
+        waitpid(getTaxi(a)->processid, NULL, WNOHANG);
+    }
+    endwin();
+    /*remove sme array*/
 }
 
 int main(int argc, char *argv[])
@@ -633,7 +643,7 @@ int main(int argc, char *argv[])
     cbreak();
     noecho();
     keypad(stdscr, TRUE);
-    nodelay(stdscr, TRUE);
+    /* nodelay(stdscr, TRUE); */
 
     getmaxyx(stdscr, h, w);
     win = newwin(h, w, 0, 0);

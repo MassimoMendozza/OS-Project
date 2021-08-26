@@ -17,6 +17,7 @@
 int myNumber, shmID, msgID;
 int myTaxiNumber;
 int goOn;
+int keepOn;
 int alarmInsideSem;
 taxi *myself;
 FILE *fp;
@@ -123,13 +124,13 @@ int main(int argc, char *argv[])
 
 static void alarmHandler(int signalNum)
 {
+    keepOn = 0;
     message killNotification;
     killNotification.driverID = myTaxiNumber;
     killNotification.sourceX = myself->posX;
     killNotification.sourceY = myself->posY;
     killNotification.destX = destX;
     killNotification.destY = destY;
-    killNotification.type = MSG_TIMEOUT;
     killNotification.mtype = MSG_TIMEOUT;
     msgsnd(msgID, &killNotification, sizeof(message), 0);
     reserveSem(getMap()->cellsSemID, (myself->posX * getMap()->SO_HEIGHT) + myself->posY);
@@ -143,7 +144,9 @@ static void alarmHandler(int signalNum)
     }
     fclose(fp);
     raise(SIGKILL);
+    exit(EXIT_FAILURE);
 }
+
 void moveMyselfIn(int destX, int destY)
 {
     int originX, originY;
@@ -203,7 +206,8 @@ void moveOnX(int destX, int destY)
             if (getMapCellAt(xToGo, myself->posY)->maxElements != -1)
             {
                 moveMyselfIn(xToGo, myself->posY);
-                if(myself->posX==xToGo){
+                if (myself->posX == xToGo)
+                {
                     myself->distanceDone++;
                 }
             }
@@ -216,11 +220,13 @@ void moveOnY(int destX, int destY)
     if (!((myself->posX == destX) && (myself->posY == destY)))
     {
         int yToGo = myself->posY + (1 * (destY > myself->posY)) + ((-1) * (destY < myself->posY));
-        if (yToGo != myself->posY){
+        if (yToGo != myself->posY)
+        {
             if (getMapCellAt(myself->posX, yToGo)->maxElements != -1)
             {
                 moveMyselfIn(myself->posX, yToGo);
-                if(myself->posY==yToGo){
+                if (myself->posY == yToGo)
+                {
                     myself->distanceDone++;
                 }
             }
@@ -230,6 +236,7 @@ void moveOnY(int destX, int destY)
 
 void taxiKickoff()
 {
+    keepOn = 1;
 
     if (signal(SIGALRM, &alarmHandler) == SIG_ERR)
     {
@@ -238,10 +245,9 @@ void taxiKickoff()
     message imHere;
     imHere.mtype = MSG_KICKOFF;
     msgsnd(msgID, &imHere, sizeof(message), 0);
-    alarm(getMap()->SO_TIMEOUT);
 
     /*Taxi si mette in attesa di richieste*/
-    while (1)
+    while (keepOn)
     {
         sourceX = sourceY = destX = destY = -1;
         message requestPlaceholder;

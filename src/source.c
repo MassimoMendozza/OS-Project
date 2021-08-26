@@ -68,6 +68,8 @@ void clientKickoff()
     srand(getpid()%time(NULL));
     message imHere;
 
+    FILE *fp;
+    fp=fopen("try.txt", "ab+");
     struct timespec request = {0, 100000000};
     struct timespec remaining;
 
@@ -122,7 +124,8 @@ void clientKickoff()
                                            destFound = 1;
                                            imHere.destX = destX;
                                            imHere.destY = destY;
-
+                                           fprintf(fp, "%d sX:%d sY:%d dD:%d dY:%d\n", getpid(),sourceX,sourceY,destX,destY);
+                                           fflush(fp);
                                            releaseSem(getMap()->cellsSemID, (destX * getMap()->SO_HEIGHT) + destY);
                                        };
                                 }
@@ -146,7 +149,6 @@ void clientKickoff()
         
 
 
-        imHere.clientID = myClientNumber;
         imHere.mtype = MSG_CLIENT_CALL;
 
         nanosleep(&request, &remaining);

@@ -1,4 +1,4 @@
-CFLAGS 		= -g -w -std=c89 -pedantic -D_POSIX_C_SOURCE=200112L 
+CFLAGS 		= -g -w -std=c89 -pedantic -D_POSIX_C_SOURCE=200112L
 #-Wall -Wextra -Wpedantic -Wconversion
 LIBRARY_DEPS = -lpthread -lncursesw
 COMMON_DEPS 	= src/*.h Makefile
