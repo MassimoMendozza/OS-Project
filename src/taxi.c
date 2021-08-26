@@ -24,10 +24,13 @@ int alarmInsideSem;
 taxi *myself;
 FILE *fp;
 
-alarmInsideSem=0;
+int sourceX, sourceY, destX, destY;
+alarmInsideSem = 0;
 
-void cautiousHandler(int a){
-alarmInsideSem=1;
+void cautiousHandler(int a)
+{
+    alarmInsideSem = 1;
+    signal(SIGALRM, &cautiousHandler);
 }
 
 void kickoffHandler(int a)
@@ -88,11 +91,11 @@ void bornATaxi(int myNumber)
             x = y = 0;
         }
     }
-    if ((myself->posX == -1) && (myself->posY == -1))
+    /*if ((myself->posX == -1) && (myself->posY == -1))
     {
 
         exit(EXIT_FAILURE);
-    } /**/
+    } */
     message positionMessage;
     positionMessage.mtype = MSG_TAXI_CELL;
     positionMessage.driverID = myTaxiNumber;
@@ -118,6 +121,8 @@ static void alarmHandler(int signalNum)
     killNotification.driverID = myTaxiNumber;
     killNotification.sourceX = myself->posX;
     killNotification.sourceY = myself->posY;
+    killNotification.destX = destX;
+    killNotification.destY = destY;
     killNotification.type = MSG_TIMEOUT;
     killNotification.mtype = MSG_TIMEOUT;
     msgsnd(msgID, &killNotification, sizeof(message), 0);
@@ -140,15 +145,18 @@ void moveMyselfIn(int destX, int destY)
         getMapCellAt(destX, destY)->currentElements++;
         myself->posX = destX;
         myself->posY = destY;
-    }else{
+    }
+    else
+    {
 
-    fprintf(fp, "%d\tWAITING\n", getpid());
+        fprintf(fp, "%d\tWAITING\n", getpid());
     }
 
     releaseSem(getMap()->cellsSemID, (originX * getMap()->SO_HEIGHT) + originY);
     releaseSem(getMap()->cellsSemID, (destX * getMap()->SO_HEIGHT) + destY);
     signal(SIGALRM, &alarmHandler);
-    if(alarmInsideSem){
+    if (alarmInsideSem)
+    {
         raise(SIGALRM);
     }
     alarm(getMap()->SO_TIMEOUT);
@@ -177,12 +185,15 @@ void moveOnX(int destX, int destY)
         if (xToGo == myself->posX)
         {
             xToGo = myself->posX - 1 + (2 * (myself->posX == 0));
-        }else{
-
-        if(getMapCellAt(xToGo, myself->posY)->maxElements!=-1){
-
-        moveMyselfIn(xToGo, myself->posY);
         }
+        else
+        {
+
+            if (getMapCellAt(xToGo, myself->posY)->maxElements != -1)
+            {
+
+                moveMyselfIn(xToGo, myself->posY);
+            }
         }
     }
 }
@@ -194,17 +205,18 @@ void moveOnY(int destX, int destY)
         int yToGo = myself->posY + (1 * (destY > myself->posY)) + ((-1) * (destY < myself->posY));
         if (yToGo == myself->posY)
         {
-            yToGo = myself->posY - 1 + (2 * (myself->posY  == 0));
-        }else{
-
-        if(getMapCellAt(myself->posX, yToGo)->maxElements!=-1){
-        moveMyselfIn(myself->posX, yToGo);
-
+            yToGo = myself->posY - 1 + (2 * (myself->posY == 0));
         }
+        else
+        {
+
+            if (getMapCellAt(myself->posX, yToGo)->maxElements != -1)
+            {
+                moveMyselfIn(myself->posX, yToGo);
+            }
         }
     }
 }
-
 
 void taxiKickoff()
 {
@@ -221,10 +233,10 @@ void taxiKickoff()
     /*Taxi si mette in attesa di richieste*/
     while (1)
     {
+        sourceX = sourceY = destX = destY = -1;
         message requestPlaceholder;
         msgrcv(msgID, &requestPlaceholder, sizeof(message), MSG_CLIENT_CALL, 0);
 
-        int sourceX, sourceY, destX, destY;
         sourceX = requestPlaceholder.sourceX;
         sourceY = requestPlaceholder.sourceY;
         destX = requestPlaceholder.destX;
@@ -237,13 +249,38 @@ void taxiKickoff()
         msgsnd(msgID, &requestPlaceholder, sizeof(message), 0);
 
         driveTaxi(sourceX, sourceY);
+        /* making source cell available again */
+        signal(SIGALRM, &cautiousHandler);
+        reserveSem(getMap()->cellsSemID, (myself->posX * getMap()->SO_HEIGHT) + myself->posY);
+
+        getMapCellAt(myself->posX, myself->posY)->isAvailable = 1;
+
+        releaseSem(getMap()->cellsSemID, (myself->posX * getMap()->SO_HEIGHT) + myself->posY);
+        signal(SIGALRM, &alarmHandler);
+        if (alarmInsideSem)
+        {
+            raise(SIGALRM);
+        }
+        alarm(getMap()->SO_TIMEOUT);
 
         fprintf(fp, "%d\tx:%d y:%d\PRELEVATO\n", getpid(), sourceX, sourceY);
         requestPlaceholder.mtype = MSG_REQUEST_BEGIN;
         msgsnd(msgID, &requestPlaceholder, sizeof(message), 0);
 
         driveTaxi(destX, destY);
+        /* making end cell available again */
+        signal(SIGALRM, &cautiousHandler);
+        reserveSem(getMap()->cellsSemID, (myself->posX * getMap()->SO_HEIGHT) + myself->posY);
 
+        getMapCellAt(myself->posX, myself->posY)->isAvailable = 1;
+
+        releaseSem(getMap()->cellsSemID, (myself->posX * getMap()->SO_HEIGHT) + myself->posY);
+        signal(SIGALRM, &alarmHandler);
+        if (alarmInsideSem)
+        {
+            raise(SIGALRM);
+        }
+        alarm(getMap()->SO_TIMEOUT);
         fprintf(fp, "%d\tx:%d y:%d\ARRIVATO\n", getpid(), sourceX, sourceY);
         requestPlaceholder.mtype = MSG_REQUEST_DONE;
         msgsnd(msgID, &requestPlaceholder, sizeof(message), 0);

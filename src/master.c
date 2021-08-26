@@ -50,15 +50,8 @@ void alarmMaster(int sig)
     }
     msgctl(msgID, IPC_RMID, NULL);
     shmctl(shmID, IPC_RMID, NULL);
+    /*remove sme array*/
     exit(EXIT_SUCCESS);
-}
-
-void updateMapHandler(int sig)
-{
-    signal(SIGUSR1, &updateMapHandler);
-    updateMap = 1;
-    updatedmap++;
-    mvprintw(0, 0, "MANNGGIALAPUTTANA %d", updatedmap);
 }
 
 /*
@@ -416,7 +409,6 @@ void bornAMaster()
     updateMap = 0;
     signal(SIGALRM, &alarmMaster);
     signal(SIGINT, &alarmMaster);
-    signal(SIGUSR1, &updateMapHandler);
 
     activeTaxi = 0;
 
@@ -484,8 +476,8 @@ void bornAMaster()
     mvprintw(2, 2, "Active taxis: %d/%d   ", activeTaxi, map->SO_TAXI);
     refresh();
 
-    int requestTaken, requestBegin, requestDone;
-    requestBegin = requestDone = requestTaken = 0;
+    int requestTaken, requestBegin, requestDone, requestAborted;
+    requestBegin = requestDone = requestTaken = requestAborted = 0;
     while (1)
     {
 
@@ -503,6 +495,13 @@ void bornAMaster()
             reserveSem(getMap()->cellsSemID, (placeHolder.sourceX * getMap()->SO_HEIGHT) + placeHolder.sourceY);
             getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->currentElements--;
             releaseSem(getMap()->cellsSemID, (placeHolder.sourceX * getMap()->SO_HEIGHT) + placeHolder.sourceY);
+            if((placeHolder.destX!=-1)){
+                reserveSem(getMap()->cellsSemID, (placeHolder.destX * getMap()->SO_HEIGHT) + placeHolder.destY);
+            getMapCellAt(placeHolder.destX, placeHolder.destY)->isAvailable=1;
+            releaseSem(getMap()->cellsSemID, (placeHolder.destX * getMap()->SO_HEIGHT) + placeHolder.destY);
+            
+            }
+            requestAborted++;
             mvprintw(2, 2, "Active taxis: %d/%d", activeTaxi, map->SO_TAXI);
             if (fork() == 0)
             {
@@ -526,7 +525,7 @@ void bornAMaster()
             updateMap = 1;
             move(3, 0);
             clrtoeol();
-            mvprintw(3, 2, "Requests\tTaken:%d\tStarted:%d\tEnded:%d", requestTaken, requestBegin, requestDone);
+            mvprintw(3, 2, "Requests\tTaken:%d\tStarted:%d\tEnded:%d\tAborted:%d", requestTaken, requestBegin, requestDone, requestAborted);
             refresh();
         }
 
@@ -536,7 +535,7 @@ void bornAMaster()
             updateMap = 1;
             move(3, 0);
             clrtoeol();
-            mvprintw(3, 2, "Requests\tTaken:%d\tStarted:%d\tEnded:%d", requestTaken, requestBegin, requestDone);
+            mvprintw(3, 2, "Requests\tTaken:%d\tStarted:%d\tEnded:%d\tAborted:%d", requestTaken, requestBegin, requestDone, requestAborted);
             refresh();
         }
 
@@ -546,7 +545,7 @@ void bornAMaster()
             updateMap = 1;
             move(3, 0);
             clrtoeol();
-            mvprintw(3, 2, "Requests\tTaken:%d\tStarted:%d\tEnded:%d", requestTaken, requestBegin, requestDone);
+            mvprintw(3, 2, "Requests\tTaken:%d\tStarted:%d\tEnded:%d\tAborted:%d", requestTaken, requestBegin, requestDone, requestAborted);
             refresh();
         }
 
