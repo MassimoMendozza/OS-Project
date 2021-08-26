@@ -59,7 +59,7 @@ void clientKickoff()
     srand(getpid());
     message imHere;
 
-    struct timespec request = {0, 500000000};
+    struct timespec request = {0, 10000000};
     struct timespec remaining;
 
     /*
@@ -83,12 +83,12 @@ void clientKickoff()
         {
             for (sourceY = rand() % getMap()->SO_HEIGHT; sourceY < getMap()->SO_HEIGHT && !sourceFound; sourceY++)
             {
-                if (getMapCellAt(sourceX, sourceY)->maxElements > -1 && getMapCellAt(sourceX, sourceY)->isAvailable)
+                if ((getMapCellAt(sourceX, sourceY)->maxElements != -1) && getMapCellAt(sourceX, sourceY)->isAvailable)
                 {
 
                     if (reserveSem(getMap()->cellsSemID, (sourceX * getMap()->SO_HEIGHT) + sourceY) == -1)
                     {
-                        fprintf(stdout, "%s", strerror(errno));
+                        /* fprintf(stdout, "%s", strerror(errno)); */
                     }
                     else
                     {
@@ -99,13 +99,13 @@ void clientKickoff()
                         {
                             for (destY = rand() % getMap()->SO_HEIGHT; destY < getMap()->SO_HEIGHT && !destFound; destY++)
                             {
-                                if (getMapCellAt(destX, destY)->maxElements > -1 && getMapCellAt(destX, destY)->isAvailable)
+                                if ((getMapCellAt(destX, destY)->maxElements != -1) && getMapCellAt(destX, destY)->isAvailable)
                                 {
 
                                     if (reserveSem(getMap()->cellsSemID, (destX * getMap()->SO_HEIGHT) + destY) == -1)
                                     {
-                                        fprintf(stdout, "%s", strerror(errno));
-                                    }
+                                       /* fprintf(stdout, "%s", strerror(errno));
+                                     */ }
                                     else
                                     {
                                         getMapCellAt(destX, destY)->isAvailable = 0;
@@ -140,7 +140,7 @@ void clientKickoff()
         nanosleep(&request, &remaining);
         if (msgsnd(msgID, &imHere, sizeof(message), 0) == -1)
         {
-            printf("%s", strerror(errno));
+            /*printf("%s", strerror(errno));*/
         }
     }
 }

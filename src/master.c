@@ -39,8 +39,17 @@ int h, w, a;
 void alarmMaster(int sig)
 {
     endwin();
+    int a;
+    for (a = 0; a < getMap()->SO_SOURCES; a++)
+    {
+        kill(SIGKILL, getPerson(a)->processid);
+    }
+    for (a = 0; a < getMap()->SO_TAXI; a++)
+    {
+        kill(SIGKILL, getTaxi(a)->processid);
+    }
     msgctl(msgID, IPC_RMID, NULL);
-    shmctl(shmID,IPC_RMID,NULL);
+    shmctl(shmID, IPC_RMID, NULL);
     exit(EXIT_SUCCESS);
 }
 
@@ -290,7 +299,7 @@ void beFruitful() /*creation of processes like taxi and client*/
         {
             shouldIBeATaxi = 1;
             bornATaxi(a);
-            a = map->SO_TAXI;
+            a = map->SO_TAXI; /*break*/
         }
     }
     if (!shouldIBeATaxi)
@@ -485,15 +494,15 @@ void bornAMaster()
         {
             kill(getTaxi(placeHolder.driverID)->processid, SIGUSR1);
 
-            reserveSem(getMap()->cellsSemID, (placeHolder.sourceX * getMap()->SO_HEIGHT) + placeHolder.sourceY);
-            getMapCellAt(placeHolder.sourceX,  placeHolder.sourceY)->currentElements--;
-            releaseSem(getMap()->cellsSemID, (placeHolder.sourceX * getMap()->SO_HEIGHT) +  placeHolder.sourceY);
         } /* checking if someone's killed itself*/
         if (msgrcv(msgID, &placeHolder, sizeof(message), MSG_TIMEOUT, IPC_NOWAIT) != -1)
         {
             activeTaxi--;
             move(2, 0);
             clrtoeol();
+            reserveSem(getMap()->cellsSemID, (placeHolder.sourceX * getMap()->SO_HEIGHT) + placeHolder.sourceY);
+            getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->currentElements--;
+            releaseSem(getMap()->cellsSemID, (placeHolder.sourceX * getMap()->SO_HEIGHT) + placeHolder.sourceY);
             mvprintw(2, 2, "Active taxis: %d/%d", activeTaxi, map->SO_TAXI);
             if (fork() == 0)
             {
@@ -514,6 +523,7 @@ void bornAMaster()
         if (msgrcv(msgID, &placeHolder, sizeof(message), MSG_CLIENT_TAKEN, IPC_NOWAIT) != -1)
         {
             requestTaken++;
+            updateMap = 1;
             move(3, 0);
             clrtoeol();
             mvprintw(3, 2, "Requests\tTaken:%d\tStarted:%d\tEnded:%d", requestTaken, requestBegin, requestDone);
