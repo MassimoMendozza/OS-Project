@@ -65,10 +65,10 @@ int main(int argc, char *argv[])
 
 void clientKickoff()
 {
-    srand(getpid());
+    srand(getpid()%time(NULL));
     message imHere;
 
-    struct timespec request = {0, 10000000};
+    struct timespec request = {0, 100000000};
     struct timespec remaining;
 
     /*

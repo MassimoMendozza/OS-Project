@@ -47,7 +47,7 @@ int main(int argc, char *argv[])
         strerror(errno);
     }
     setAddrstart(addrstart);
-    srand(getpid());
+    srand(getpid() % time(NULL));
     fp = fopen("movement.txt", "ab+");
 
     myTaxiNumber = myNumber; /*ti amo <3*/
@@ -132,12 +132,12 @@ static void alarmHandler(int signalNum)
     killNotification.type = MSG_TIMEOUT;
     killNotification.mtype = MSG_TIMEOUT;
     msgsnd(msgID, &killNotification, sizeof(message), 0);
-    reserveSem(getMap()->cellsSemID, ( myself->posX * getMap()->SO_HEIGHT) +  myself->posY);
-    getMapCellAt( myself->posX,  myself->posY)->currentElements--;
-    releaseSem(getMap()->cellsSemID, ( myself->posX * getMap()->SO_HEIGHT) +  myself->posY);
+    reserveSem(getMap()->cellsSemID, (myself->posX * getMap()->SO_HEIGHT) + myself->posY);
+    getMapCellAt(myself->posX, myself->posY)->currentElements--;
+    releaseSem(getMap()->cellsSemID, (myself->posX * getMap()->SO_HEIGHT) + myself->posY);
     if ((destX != -1))
     {
-        reserveSem(getMap()->cellsSemID, (destX * getMap()->SO_HEIGHT) +destY);
+        reserveSem(getMap()->cellsSemID, (destX * getMap()->SO_HEIGHT) + destY);
         getMapCellAt(destX, destY)->isAvailable = 1;
         releaseSem(getMap()->cellsSemID, (destX * getMap()->SO_HEIGHT) + destY);
     }
@@ -164,7 +164,7 @@ void moveMyselfIn(int destX, int destY)
     else
     {
 
-        /* */fprintf(fp, "%d\tWAITING to enter x:%d y:%d\n", getpid(), destX, destY); 
+        /* */ fprintf(fp, "%d\tWAITING to enter x:%d y:%d\n", getpid(), destX, destY);
     }
 
     releaseSem(getMap()->cellsSemID, (originX * getMap()->SO_HEIGHT) + originY);
@@ -178,7 +178,7 @@ void moveMyselfIn(int destX, int destY)
 
     struct timespec request = {0, getMapCellAt(destX, destY)->holdingTime};
     struct timespec remaining;
-    /* */fprintf(fp, "%d\tx:%d y:%d\n", getpid(), myself->posX, myself->posY); 
+    /* */ fprintf(fp, "%d\tx:%d y:%d\n", getpid(), myself->posX, myself->posY);
     /*  kill(getMap()->masterProcessID, SIGUSR1);*/
     nanosleep(&request, &remaining);
 };
@@ -197,17 +197,15 @@ void moveOnX(int destX, int destY)
     if (!((myself->posX == destX) && (myself->posY == destY)))
     {
         int xToGo = myself->posX + (1 * (destX > myself->posX)) + ((-1) * (destX < myself->posX));
-        if (xToGo == myself->posX)
-        {
-            xToGo = myself->posX - 1 + (2 * (myself->posX == 0));
-        }
-        else
+        if (xToGo != myself->posX)
         {
 
             if (getMapCellAt(xToGo, myself->posY)->maxElements != -1)
             {
-
                 moveMyselfIn(xToGo, myself->posY);
+                if(myself->posX==xToGo){
+                    myself->distanceDone++;
+                }
             }
         }
     }
@@ -218,16 +216,13 @@ void moveOnY(int destX, int destY)
     if (!((myself->posX == destX) && (myself->posY == destY)))
     {
         int yToGo = myself->posY + (1 * (destY > myself->posY)) + ((-1) * (destY < myself->posY));
-        if (yToGo == myself->posY)
-        {
-            yToGo = myself->posY - 1 + (2 * (myself->posY == 0));
-        }
-        else
-        {
-
+        if (yToGo != myself->posY){
             if (getMapCellAt(myself->posX, yToGo)->maxElements != -1)
             {
                 moveMyselfIn(myself->posX, yToGo);
+                if(myself->posY==yToGo){
+                    myself->distanceDone++;
+                }
             }
         }
     }
@@ -260,7 +255,7 @@ void taxiKickoff()
         requestPlaceholder.driverID = myTaxiNumber;
         requestPlaceholder.mtype = MSG_CLIENT_TAKEN;
 
-        /* */fprintf(fp, "%d\tx:%d y:%d\tRICHIESTA\n", getpid(), sourceX, sourceY); 
+        /* */ fprintf(fp, "%d\tx:%d y:%d\tRICHIESTA\n", getpid(), sourceX, sourceY);
         msgsnd(msgID, &requestPlaceholder, sizeof(message), 0);
 
         driveTaxi(sourceX, sourceY);
@@ -277,8 +272,8 @@ void taxiKickoff()
             raise(SIGALRM);
         }
         alarm(getMap()->SO_TIMEOUT);
-/*  */fprintf(fp, "%d\tx:%d y:%d\PRELEVATO\n", getpid(), sourceX, sourceY);
-        
+        /*  */ fprintf(fp, "%d\tx:%d y:%d\PRELEVATO\n", getpid(), sourceX, sourceY);
+
         requestPlaceholder.mtype = MSG_REQUEST_BEGIN;
         msgsnd(msgID, &requestPlaceholder, sizeof(message), 0);
 
@@ -296,9 +291,10 @@ void taxiKickoff()
             raise(SIGALRM);
         }
         alarm(getMap()->SO_TIMEOUT);
-        /* */ fprintf(fp, "%d\tx:%d y:%d\ARRIVATO\n", getpid(), sourceX, sourceY);
-        
+        fprintf(fp, "%d\tx:%d y:%d\ARRIVATO\n", getpid(), sourceX, sourceY);
+
         requestPlaceholder.mtype = MSG_REQUEST_DONE;
         msgsnd(msgID, &requestPlaceholder, sizeof(message), 0);
+        myself->ridesDone++;
     }
 }

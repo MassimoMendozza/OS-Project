@@ -58,6 +58,7 @@ void alarmMaster(int sig)
     }
     msgctl(msgID, IPC_RMID, NULL);
     shmctl(shmID, IPC_RMID, NULL);
+    semctl(shmID, 1200, IPC_RMID);
     /*remove sme array*/
     exit(EXIT_SUCCESS);
 }
