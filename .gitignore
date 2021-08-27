@@ -56,3 +56,4 @@ bin/
 build/
 movement.txt
 try.txt
+*.txt
