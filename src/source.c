@@ -12,8 +12,8 @@
 #include "BinSemaphores.h"
 
 int myNumber, shmID, msgIDClientCall;
-int myClientNumber;
-person *myselfClient;
+int myNumber;
+person *myself;
 
 FILE *fp;
 FILE *errorLog;
@@ -26,8 +26,11 @@ void kickoffClientHandler(int a)
 
 int main(int argc, char *argv[])
 {
-    /*printf("Client n%d with pid %d\n", myNumber, getpid());*/
+    srand(getpid() % time(NULL));
     errorLog = fopen("errorLog.txt", "ab+");
+
+
+    signal(SIGUSR1, &kickoffClientHandler);
 
     myNumber = atoi(argv[1]);
     shmID = atoi(argv[2]);
@@ -40,19 +43,37 @@ int main(int argc, char *argv[])
     }
     setAddrstart(addrstart);
 
-    myselfClient = getPerson(myNumber);
-    myselfClient->processid = getpid();
-    myselfClient->number = myNumber;
-    myselfClient->isOnTaxi = 0;
+    myself = getPerson(myNumber);
+    myself->processid = getpid();
+    myself->number = myNumber;
     fp = fopen("movement.txt", "ab+");
 
-    myClientNumber = myNumber;
+    myNumber = myNumber;
 
     message msgPlaceholder;
 
+    int found, x, y;
+    found = 0;
+    for (x = rand() % getMap()->SO_WIDTH; x < getMap()->SO_WIDTH && !found; x++)
+    {
+        for (y = rand() % getMap()->SO_HEIGHT; y < getMap()->SO_HEIGHT && !found; y++)
+        {
+            if (getMapCellAt(x, y)->maxElements > -1 && getMapCellAt(x, y)->clientID == -1)
+            {
+                getMapCellAt(x, y)->clientID = myself->number;
+                myself->posX = x;
+                myself->posY = y;
+                found = 1;
+            }
+        }
+        if ((x == getMap()->SO_WIDTH - 1) && (y == getMap()->SO_HEIGHT))
+        {
+            x = y = found = 0;
+        }
+    }
+
     struct timespec request = {0, 1000000};
     struct timespec remaining;
-    signal(SIGUSR1, &kickoffClientHandler);
     goOn = 1;
     while (goOn)
     {
@@ -68,97 +89,44 @@ int main(int argc, char *argv[])
 
 void clientKickoff()
 {
-    srand(getpid() % time(NULL));
     message imHere;
 
     FILE *fp;
     fp = fopen("try.txt", "ab+");
-    struct timespec request = {0, 100000000};
+    struct timespec request = {0, 50000000};
     struct timespec remaining;
 
-    /*
-        sleep
-        mando messaggio
-        ricevo ok di presa in carico
-        aspetto di ricevere messaggio esito 
-        ricomincio
-    */
     while (1)
     {
 
-        message placeHolder;
+        int x,y,found;
+        found=0;
 
-        /* Cerco posizione in cui infilarmi */
-        int sourceX, sourceY, destX, destY;
-        int sourceFound, destFound;
-        sourceFound = destFound = 0;
-
-        for (sourceX = rand() % getMap()->SO_WIDTH; sourceX < getMap()->SO_WIDTH && !sourceFound; sourceX++)
+        for (x = rand() % getMap()->SO_WIDTH; x < getMap()->SO_WIDTH && !found; x++)
         {
-            for (sourceY = rand() % getMap()->SO_HEIGHT; sourceY < getMap()->SO_HEIGHT && !sourceFound; sourceY++)
+            for (y = rand() % getMap()->SO_HEIGHT; y < getMap()->SO_HEIGHT && !found; y++)
             {
-                if ((getMapCellAt(sourceX, sourceY)->maxElements != -1) && getMapCellAt(sourceX, sourceY)->isAvailable)
+                if (getMapCellAt(x, y)->maxElements > -1)
                 {
-
-                    if (reserveSem(getMap()->cellsSemID, (sourceX * getMap()->SO_HEIGHT) + sourceY) == -1)
-                    {
-
-                        fprintf(errorLog, "source:%d\tx:%d\ty:%d semerrorsource %s\n", myClientNumber, sourceX, sourceY, strerror(errno));
-                        fflush(errorLog);
-                    }
-                    else
-                    {
-                        getMapCellAt(sourceX, sourceY)->isAvailable = 0;
-                        sourceFound = 1;
-                        /* for annidato per cella dest */
-                        for (destX = rand() % getMap()->SO_WIDTH; destX < getMap()->SO_WIDTH && !destFound; destX++)
-                        {
-                            for (destY = rand() % getMap()->SO_HEIGHT; destY < getMap()->SO_HEIGHT && !destFound; destY++)
-                            {
-                                if ((getMapCellAt(destX, destY)->maxElements != -1) && getMapCellAt(destX, destY)->isAvailable)
-                                {
-
-                                    if (reserveSem(getMap()->cellsSemID, (destX * getMap()->SO_HEIGHT) + destY) == -1)
-                                    {
-
-                                        fprintf(errorLog, "source:%d\tx:%d\ty:%d semerrordest %s\n", myClientNumber, destX, destY, strerror(errno));
-                                        fflush(errorLog);
-                                    }
-                                    else
-                                    {
-                                        getMapCellAt(destX, destY)->isAvailable = 0;
-                                        destFound = 1;
-                                        imHere.destX = destX;
-                                        imHere.destY = destY;
-                                        fprintf(fp, "%d sX:%d sY:%d dD:%d dY:%d\n", getpid(), sourceX, sourceY, destX, destY);
-                                        fflush(fp);
-                                        releaseSem(getMap()->cellsSemID, (destX * getMap()->SO_HEIGHT) + destY);
-                                    };
-                                }
-                            }
-                            if ((destX == getMap()->SO_WIDTH - 1) && (destY == getMap()->SO_HEIGHT ))
-                            {
-                                destX = destY = destFound=0;
-                            }
-                        }
-                        imHere.sourceX = sourceX;
-                        imHere.sourceY = sourceY;
-                        releaseSem(getMap()->cellsSemID, (sourceX * getMap()->SO_HEIGHT) + sourceY);
-                    };
+                    myself->posX = x;
+                    myself->posY = y;
+                    found = 1;
                 }
             }
-            if ((sourceX == getMap()->SO_WIDTH - 1) && (sourceY == getMap()->SO_HEIGHT ))
+            if ((x == getMap()->SO_WIDTH - 1) && (y == getMap()->SO_HEIGHT))
             {
-                sourceX = sourceY = sourceFound = 0;
+                x = y = found = 0;
             }
         }
 
-        imHere.driverID=imHere.mtype=1;
+        imHere.clientID=myNumber;
+        imHere.x=x;
+        imHere.y=y;
         nanosleep(&request, &remaining);
         if (msgsnd(msgIDClientCall, &imHere, sizeof(message), 0) == -1)
         {
-                        fprintf(errorLog, "source:%d\tx:%d\ty:%d msgsndclientcall %s\n", myClientNumber,sourceX, sourceY, strerror(errno));
-                        fflush(errorLog);
+            fprintf(errorLog, "source:%d\tx:%d\ty:%d msgsndclientcall %s\n", myNumber, myself->posX, myself->posY, strerror(errno));
+            fflush(errorLog);
         }
     }
 }

@@ -200,7 +200,8 @@ void initializeMapCells()
             cells->holdingTime = randFromRange(map->SO_TIMENSEC_MIN, map->SO_TIMENSEC_MAX);
             cells->currentElements = 0;
             cells->cantPutAnHole = 0;
-            cells->isAvailable = 1;
+            getMapCellAt(x, y)->clientID = -1;
+            getMapCellAt(x, y)->topCell = 0;
         }
     }
 }
@@ -253,7 +254,6 @@ void createHoles()
             {
                 found = 1;
                 getMapCellAt(x, y)->maxElements = -1;
-                getMapCellAt(x, y)->isAvailable = 0;
 
                 for (a = x - 1; a < x + 2; a++)
                 {
@@ -564,15 +564,15 @@ void bornAMaster()
 
             kill(getTaxi(placeHolder.driverID)->processid, SIGKILL);
             taxi *dead = malloc(sizeof(taxi));
-            dead->distanceDone=getTaxi(placeHolder.driverID)->distanceDone;
-            dead->number=getTaxi(placeHolder.driverID)->number;
-            dead->posX=getTaxi(placeHolder.driverID)->posX;
-            dead->posY=getTaxi(placeHolder.driverID)->posY;
-            dead->processid=getTaxi(placeHolder.driverID)->processid;
-            dead->ridesDone=getTaxi(placeHolder.driverID)->ridesDone;
+            dead->distanceDone = getTaxi(placeHolder.driverID)->distanceDone;
+            dead->number = getTaxi(placeHolder.driverID)->number;
+            dead->posX = getTaxi(placeHolder.driverID)->posX;
+            dead->posY = getTaxi(placeHolder.driverID)->posY;
+            dead->processid = getTaxi(placeHolder.driverID)->processid;
+            dead->ridesDone = getTaxi(placeHolder.driverID)->ridesDone;
             addTaxi(deadTaxis, dead);
 
-            activeTaxi--;
+            /* activeTaxi--; */
             move(2, 0);
             clrtoeol();
 
@@ -607,7 +607,7 @@ void bornAMaster()
         }
         if (msgrcv(msgIDKickoff, &placeHolder, sizeof(message), 0, IPC_NOWAIT) != -1)
         {
-            activeTaxi++;
+            /*activeTaxi++;  */
             move(2, 0);
             clrtoeol();
             mvprintw(2, 2, "Active taxis: %d/%d\t Resurrected taxis:%d", activeTaxi, map->SO_TAXI, resurrectedTaxi);
@@ -644,6 +644,8 @@ void bornAMaster()
         /* Checking if map is to update */
         if (updateMap)
         {
+            int temptaxis;
+            temptaxis = 0;
             for (a = 0; a < getMap()->SO_WIDTH; a++)
             {
                 for (b = 0; b < getMap()->SO_HEIGHT; b++)
@@ -662,15 +664,28 @@ void bornAMaster()
                         else
                         {
                             printw("%d", getMapCellAt(a, b)->currentElements);
+                            temptaxis = temptaxis + getMapCellAt(a, b)->currentElements;
                         }
                     }
                 }
             }
+            activeTaxi = temptaxis;
             updateMap = 0;
             refresh();
         }
     };
+    mvprintw(h - 1, 0, "Status: Simulation's done, removing ipc resources...");
 
+    for (a = 0; a < getMap()->SO_SOURCES; a++)
+    {
+        kill(getPerson(a)->processid, SIGKILL);
+        waitpid(getPerson(a)->processid, NULL, WNOHANG);
+    }
+    for (a = 0; a < getMap()->SO_TAXI; a++)
+    {
+        kill(getTaxi(a)->processid, SIGKILL);
+        waitpid(getTaxi(a)->processid, NULL, WNOHANG);
+    }
     semctl(getMap()->cellsSemID, 1200, IPC_RMID);
     msgctl(msgIDKickoff, IPC_RMID, NULL);
     msgctl(msgIDTimeout, IPC_RMID, NULL);
@@ -680,32 +695,86 @@ void bornAMaster()
     msgctl(msgIDRequestBegin, IPC_RMID, NULL);
     msgctl(msgIDRequestDone, IPC_RMID, NULL);
 
-    shmctl(shmID, IPC_RMID, NULL);
+    int temptaxis;
+    temptaxis = 0;
+    start_color();
+    init_pair(0, COLOR_GREEN, COLOR_BLACK);
+    init_pair(1, COLOR_WHITE, COLOR_BLACK);
+    for (a = 0; a < getMap()->SO_WIDTH; a++)
+    {
+        for (b = 0; b < getMap()->SO_HEIGHT; b++)
+        {
+            move(b + 5, a + 3);
+            if (getMapCellAt(a, b)->maxElements == -1)
+            {
+                addch(ACS_CKBOARD);
+            }
+            else
+            {
+                if (getMapCellAt(a, b)->clientID != -1)
+                {
+                    printw("S");
+                    temptaxis = temptaxis + getMapCellAt(a, b)->currentElements;
+                }
+                else
+                {
+                    addch(' ');
+                    temptaxis = temptaxis + getMapCellAt(a, b)->currentElements;
+                }
+            }
+        }
+    }
+    move(2, 0);
+    clrtoeol();
+    mvprintw(2, 2, "Active taxis: %d/%d\t Resurrected taxis:%d", activeTaxi, map->SO_TAXI, resurrectedTaxi);
+
+    mvprintw(h - 1, 0, "Status: Simulation's done, making up the statistics...");
+
     move(h - 1, 0);
     clrtoeol();
-    mvprintw(h - 1, 0, "Status: Simulation's done, press any key to close.");
-    getch();
-    for (a = 0; a < getMap()->SO_SOURCES; a++)
+    /* making so_top_cell array */
+    typedef struct _tempCell{
+        int x, y;
+    } tempCell;
+    tempCell **top = malloc(sizeof(tempCell) * getMap()->SO_TOP_CELLS);
+    int x, y, foundX, foundY;
+    mapCell *temp;
+    temp=getMapCellAt(0,0);
+    for (a = 0; a < getMap()->SO_TOP_CELLS; a++)
     {
-        /*  char command[50];
-        sprintf(command, "kill %d", getPerson(a)->processid);
-        system(command);*/
-        kill(getPerson(a)->processid, SIGKILL);
-        waitpid(getPerson(a)->processid, NULL, WNOHANG);
-    }
-    for (a = 0; a < getMap()->SO_TAXI; a++)
-    {
-        /* char command[50];
-        sprintf(command, "kill %d", getTaxi(a)->processid);
-        system(command);*/
-        if (kill(getTaxi(a)->processid, SIGKILL) == -1)
+        for (x = 0; x < map->SO_WIDTH; x++)
         {
-            fprintf(stdout, "%s", strerror(errno));
-        };
-        waitpid(getTaxi(a)->processid, NULL, WNOHANG);
+            for (y = 0; y < map->SO_HEIGHT; y++) /*creation of cells with capacity and time*/
+            {
+                if(temp->passedBy<getMapCellAt(x,y)->passedBy){
+                    temp=getMapCellAt(x,y);
+                    foundX=x;
+                    foundY=y;
+                }
+            }
+        }
+        top[a]=malloc(sizeof(tempCell));
+        top[a]->x=foundX; top[a]->y=foundY;
+        temp->passedBy=0;
     }
+
+    mvprintw(h - 1, 0, "Status: Simulation's done, source's location is shown. press to show top cells.");
+    refresh();
+    getch();
+    for (a = 0; a < getMap()->SO_TOP_CELLS; a++)
+    {
+        
+            move(top[a]->y + 5, top[a]->x + 3);
+            addch('T');
+    }
+    move(h - 1, 0);
+    clrtoeol();
+    mvprintw(h - 1, 0, "Status: Simulation's done, top cells are shown. press any key to close.");
+    refresh();
+
+    getch();
+    shmctl(shmID, IPC_RMID, NULL);
     endwin();
-    /*remove sme array*/
 }
 
 int main(int argc, char *argv[])

@@ -9,16 +9,14 @@
 #define MSG_REQUEST_BEGIN 7
 #define MSG_REQUEST_DONE 8
 
-
 typedef struct _person /*oggetto persona*/
 {
 	int processid;
 	int number;
-	int isOnTaxi;
+	int requestDone;
 	int posX;
 	int posY;
 } person;
-
 
 typedef struct _taxi  /*oggetto taxi*/
 {
@@ -26,16 +24,14 @@ typedef struct _taxi  /*oggetto taxi*/
 	int posY;
 	int processid;
 	int number;
+	long maxTime;
 	int distanceDone, ridesDone;
-	person *client;
 } taxi;
-
 
 typedef struct _mapCell  /*oggetto mappa della città*/
 {
-	int maxElements, currentElements, holdingTime, cantPutAnHole, isAvailable;
+	int maxElements, topCell,currentElements, holdingTime, cantPutAnHole, clientID, passedBy;
 } mapCell;
-
 
 typedef struct _masterMap /*oggetto mappa città*/
 {
@@ -47,23 +43,10 @@ typedef struct _masterMap /*oggetto mappa città*/
 	mapCell ***map;
 } masterMap;
 
-
 typedef struct _message /*oggetto messaggio (?)*/
 {
-	int sourceX, sourceY, destX, destY;
-	int driverID;
+	int x,y,driverID,clientID;
 	long mtype;
 } message;
-
-
-typedef struct _requests /*oggetto richiesta*/
-{
-	/*coda richieste*/
-	int semID;
-	int maxDone, maxAborted, maxProcessing, numDone, numAborted, numProcessing;
-	message **done, **aborted, **processing;
-} requests;
-
-
 
 #endif
