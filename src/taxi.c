@@ -295,7 +295,6 @@ void taxiKickoff()
         requestPlaceholder.mtype = 1;
         if (msgsnd(msgIDClientTaken, &requestPlaceholder, sizeof(message), 0) == -1)
         {
-
             fprintf(errorLog, "taxi:%d\tx:%d\ty:%d sndclitak %s\n", myTaxiNumber, sourceX, sourceY, strerror(errno));
             fflush(errorLog);
         };

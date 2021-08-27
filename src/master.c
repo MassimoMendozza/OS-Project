@@ -43,6 +43,7 @@ key_t ipcKeyRequestDone;
 int projID;
 
 masterMap *map;
+taxiNode *deadTaxis;
 int shmID, activeTaxi, updatedmap,
     msgIDKickoff,
     msgIDTimeout,
@@ -274,7 +275,7 @@ masterMap *mapFromConfig(char *configPath)
     masterMap *map = readConfig(configPath);
 
     shmID = allocateShm(ipcKey, map);
-    
+
     msgIDKickoff = msgget(ipcKeyKickoff, IPC_CREAT | 0666);
     msgIDTimeout = msgget(ipcKeyTimeout, IPC_CREAT | 0666);
     msgIDTaxiCell = msgget(ipcKeyTaxiCell, IPC_CREAT | 0666);
@@ -364,6 +365,7 @@ void beFruitful() /*creation of processes like taxi and client*/
 
 void bornAMaster()
 {
+    deadTaxis = creator();
     keepOn = 1;
     wmove(win, 0, 0);
     getMap()->masterProcessID = getpid();
@@ -471,8 +473,8 @@ void bornAMaster()
     for (a = 0; a < map->SO_TAXI; a++)
     {
         kill(getTaxi(a)->processid, SIGUSR1);
-        
-        if (msgrcv(msgIDKickoff, &placeHolder, sizeof(message), 0,IPC_NOWAIT) != -1)
+
+        if (msgrcv(msgIDKickoff, &placeHolder, sizeof(message), 0, IPC_NOWAIT) != -1)
         {
             activeTaxi++;
             /*printf("Taxi n%d posizionato in x:%d, y:%d, cella a %d/%d\n", placeHolder.driverID, placeHolder.sourceX, placeHolder.sourceY, getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->currentElements, getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->maxElements);*/
@@ -491,7 +493,7 @@ void bornAMaster()
 
     while (activeTaxi < map->SO_TAXI)
     {
-        if (msgrcv(msgIDKickoff, &placeHolder, sizeof(message), 0,IPC_NOWAIT) != -1)
+        if (msgrcv(msgIDKickoff, &placeHolder, sizeof(message), 0, IPC_NOWAIT) != -1)
         {
             activeTaxi++;
             mvprintw(2, 2, "Taxi alive: %d/%d   ", activeTaxi, map->SO_TAXI);
@@ -530,38 +532,45 @@ void bornAMaster()
     mvprintw(2, 2, "Active taxis: %d/%d   ", activeTaxi, map->SO_TAXI);
     refresh();
 
-
-                char numberString[10];
-                char shmString[10];
-                char msgKickString[10];
-                char msgTimeString[10];
-                char msgTaCeString[10];
-                char msgClCaString[10];
-                char msgClTaString[10];
-                char msgReBeString[10];
-                char msgReDoString[10];
-                sprintf(shmString, "%d", shmID);
-                sprintf(msgKickString, "%d", msgIDKickoff);
-                sprintf(msgTimeString, "%d", msgIDTimeout);
-                sprintf(msgTaCeString, "%d", msgIDTaxiCell);
-                sprintf(msgClCaString, "%d", msgIDClientCall);
-                sprintf(msgClTaString, "%d", msgIDClientTaken);
-                sprintf(msgReBeString, "%d", msgIDRequestBegin);
-                sprintf(msgReDoString, "%d", msgIDRequestDone);
+    char numberString[10];
+    char shmString[10];
+    char msgKickString[10];
+    char msgTimeString[10];
+    char msgTaCeString[10];
+    char msgClCaString[10];
+    char msgClTaString[10];
+    char msgReBeString[10];
+    char msgReDoString[10];
+    sprintf(shmString, "%d", shmID);
+    sprintf(msgKickString, "%d", msgIDKickoff);
+    sprintf(msgTimeString, "%d", msgIDTimeout);
+    sprintf(msgTaCeString, "%d", msgIDTaxiCell);
+    sprintf(msgClCaString, "%d", msgIDClientCall);
+    sprintf(msgClTaString, "%d", msgIDClientTaken);
+    sprintf(msgReBeString, "%d", msgIDRequestBegin);
+    sprintf(msgReDoString, "%d", msgIDRequestDone);
     int requestTaken, requestBegin, requestDone, requestAborted, resurrectedTaxi;
     requestBegin = requestDone = requestTaken = requestAborted = resurrectedTaxi = 0;
     while (keepOn)
     {
         message placeHolder;
-        if ((msgrcv(msgIDTaxiCell, &placeHolder, sizeof(message), 0,IPC_NOWAIT)) != -1)
+        if ((msgrcv(msgIDTaxiCell, &placeHolder, sizeof(message), 0, IPC_NOWAIT)) != -1)
         {
             kill(getTaxi(placeHolder.driverID)->processid, SIGUSR1);
             resurrectedTaxi++;
         } /* checking if someone's killed itself*/
-        if (msgrcv(msgIDTimeout, &placeHolder, sizeof(message),0, IPC_NOWAIT) != -1)
+        if (msgrcv(msgIDTimeout, &placeHolder, sizeof(message), 0, IPC_NOWAIT) != -1)
         {
 
             kill(getTaxi(placeHolder.driverID)->processid, SIGKILL);
+            taxi *dead = malloc(sizeof(taxi));
+            dead->distanceDone=getTaxi(placeHolder.driverID)->distanceDone;
+            dead->number=getTaxi(placeHolder.driverID)->number;
+            dead->posX=getTaxi(placeHolder.driverID)->posX;
+            dead->posY=getTaxi(placeHolder.driverID)->posY;
+            dead->processid=getTaxi(placeHolder.driverID)->processid;
+            dead->ridesDone=getTaxi(placeHolder.driverID)->ridesDone;
+            addTaxi(deadTaxis, dead);
 
             activeTaxi--;
             move(2, 0);
@@ -596,7 +605,7 @@ void bornAMaster()
                 /*printf("Taxi n%d suicidato\n", placeHolder.driverID);*/
             }
         }
-        if (msgrcv(msgIDKickoff, &placeHolder, sizeof(message), 0,IPC_NOWAIT) != -1)
+        if (msgrcv(msgIDKickoff, &placeHolder, sizeof(message), 0, IPC_NOWAIT) != -1)
         {
             activeTaxi++;
             move(2, 0);
@@ -605,7 +614,7 @@ void bornAMaster()
             refresh();
             /*printf("Taxi n%d posizionato in x:%d, y:%d, cella a %d/%d\n", placeHolder.driverID, placeHolder.sourceX, placeHolder.sourceY, getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->currentElements, getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->maxElements);*/
         }
-        if (msgrcv(msgIDClientTaken, &placeHolder, sizeof(message), 0,IPC_NOWAIT) != -1)
+        if (msgrcv(msgIDClientTaken, &placeHolder, sizeof(message), 0, IPC_NOWAIT) != -1)
         {
             requestTaken++;
             updateMap = 1;
@@ -614,7 +623,7 @@ void bornAMaster()
             mvprintw(3, 2, "Requests\tTaken:%d\tStarted:%d\tEnded:%d\tAborted:%d", requestTaken, requestBegin, requestDone, requestAborted);
         }
 
-        if (msgrcv(msgIDRequestBegin, &placeHolder, sizeof(message), 0,IPC_NOWAIT) != -1)
+        if (msgrcv(msgIDRequestBegin, &placeHolder, sizeof(message), 0, IPC_NOWAIT) != -1)
         {
             requestBegin++;
             updateMap = 1;
@@ -623,7 +632,7 @@ void bornAMaster()
             mvprintw(3, 2, "Requests\tTaken:%d\tStarted:%d\tEnded:%d\tAborted:%d", requestTaken, requestBegin, requestDone, requestAborted);
         }
 
-        if (msgrcv(msgIDRequestDone, &placeHolder, sizeof(message), 0,IPC_NOWAIT) != -1)
+        if (msgrcv(msgIDRequestDone, &placeHolder, sizeof(message), 0, IPC_NOWAIT) != -1)
         {
             requestDone++;
             updateMap = 1;
