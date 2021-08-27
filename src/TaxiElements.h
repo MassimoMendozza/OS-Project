@@ -50,9 +50,9 @@ typedef struct _masterMap /*oggetto mappa città*/
 
 typedef struct _message /*oggetto messaggio (?)*/
 {
-	long mtype;
 	int sourceX, sourceY, destX, destY;
 	int driverID;
+	long mtype;
 } message;
 
 

@@ -9,18 +9,26 @@
 #include <time.h>
 #include <sys/types.h>
 #include <errno.h>
+#include <sys/msg.h>
 
 #include "shmUtils.h"
 #include "TaxiElements.h"
 #include "BinSemaphores.h"
 
-int myNumber, shmID, msgID;
+int myNumber, shmID,
+    msgIDKickoff,
+    msgIDTimeout,
+    msgIDTaxiCell,
+    msgIDClientCall,
+    msgIDClientTaken,
+    msgIDRequestBegin,
+    msgIDRequestDone;
 int myTaxiNumber;
 int goOn;
 int keepOn;
 int alarmInsideSem;
 taxi *myself;
-FILE *fp;
+FILE *errorLog;
 
 int sourceX, sourceY, destX, destY;
 alarmInsideSem = 0;
@@ -34,13 +42,23 @@ void cautiousHandler(int a)
 void kickoffHandler(int a)
 {
     goOn = 0;
+
+    signal(SIGUSR1, &kickoffHandler);
 }
 
 int main(int argc, char *argv[])
 {
+    errorLog = fopen("errorLog.txt", "ab+");
+
     myNumber = atoi(argv[1]);
     shmID = atoi(argv[2]);
-    msgID = atoi(argv[3]);
+    msgIDKickoff = atoi(argv[3]);
+    msgIDTimeout = atoi(argv[4]);
+    msgIDTaxiCell = atoi(argv[5]);
+    msgIDClientCall = atoi(argv[6]);
+    msgIDClientTaken = atoi(argv[7]);
+    msgIDRequestBegin = atoi(argv[8]);
+    msgIDRequestDone = atoi(argv[9]);
 
     void *addrstart = shmat(shmID, NULL, 0);
     if (addrstart == -1)
@@ -49,7 +67,6 @@ int main(int argc, char *argv[])
     }
     setAddrstart(addrstart);
     srand(getpid() % time(NULL));
-    fp = fopen("movement.txt", "ab+");
 
     myTaxiNumber = myNumber; /*ti amo <3*/
 
@@ -78,7 +95,9 @@ int main(int argc, char *argv[])
 
                 if (reserveSem(getMap()->cellsSemID, (x * getMap()->SO_HEIGHT) + y) == -1)
                 {
-                    /*fprintf(stdout, "%s", strerror(errno));*/
+
+                    fprintf(errorLog, "taxi:%d\tx:%d\ty:%d semerrorcellrandsearch %s\n", myTaxiNumber, x, y, strerror(errno));
+                    fflush(errorLog);
                 }
                 else
                 {
@@ -93,22 +112,29 @@ int main(int argc, char *argv[])
                 };
             }
         }
-        if ((x == getMap()->SO_WIDTH - 1) && (y == getMap()->SO_HEIGHT - 1))
+        if ((x == getMap()->SO_WIDTH - 1) && (y == getMap()->SO_HEIGHT))
         {
-            x = y = 0;
+            x = y = found = 0;
         }
     }
-    /*if ((myself->posX == -1) && (myself->posY == -1))
+    if ((myself->posX == -1) || (myself->posY == -1))
     {
 
+        fprintf(errorLog, "taxi:%d\tx:%d\ty:%d noplace4me %s\n", myTaxiNumber, sourceX, sourceY, strerror(errno));
+        fflush(errorLog);
         exit(EXIT_FAILURE);
-    } */
+    }
     message positionMessage;
-    positionMessage.mtype = MSG_TAXI_CELL;
     positionMessage.driverID = myTaxiNumber;
-    positionMessage.sourceX = myself->posX;
-    positionMessage.sourceY = myself->posY;
-    msgsnd(msgID, &positionMessage, sizeof(message), 0);
+    positionMessage.sourceX =
+    positionMessage.sourceY = 
+    positionMessage.destX = positionMessage.destY = 66;
+    positionMessage.mtype = 1;
+    if (msgsnd(msgIDTaxiCell, &positionMessage, sizeof(message), 0) == -1)
+    {
+        fprintf(errorLog, "taxi:%d\tx:%d\ty:%d sndtxicell %s\n", myTaxiNumber, myself->posX, myself->posY, strerror(errno));
+        fflush(errorLog);
+    };
 
     message msgPlaceholder;
 
@@ -131,8 +157,8 @@ static void alarmHandler(int signalNum)
     killNotification.sourceY = myself->posY;
     killNotification.destX = destX;
     killNotification.destY = destY;
-    killNotification.mtype = MSG_TIMEOUT;
-    msgsnd(msgID, &killNotification, sizeof(message), 0);
+    killNotification.mtype = 1;
+    msgsnd(msgIDTimeout, &killNotification, sizeof(message), 0);
     reserveSem(getMap()->cellsSemID, (myself->posX * getMap()->SO_HEIGHT) + myself->posY);
     getMapCellAt(myself->posX, myself->posY)->currentElements--;
     releaseSem(getMap()->cellsSemID, (myself->posX * getMap()->SO_HEIGHT) + myself->posY);
@@ -142,7 +168,6 @@ static void alarmHandler(int signalNum)
         getMapCellAt(destX, destY)->isAvailable = 1;
         releaseSem(getMap()->cellsSemID, (destX * getMap()->SO_HEIGHT) + destY);
     }
-    fclose(fp);
     raise(SIGKILL);
     exit(EXIT_FAILURE);
 }
@@ -164,11 +189,6 @@ void moveMyselfIn(int destX, int destY)
         myself->posX = destX;
         myself->posY = destY;
     }
-    else
-    {
-
-        /* */ fprintf(fp, "%d\tWAITING to enter x:%d y:%d\n", getpid(), destX, destY);
-    }
 
     releaseSem(getMap()->cellsSemID, (originX * getMap()->SO_HEIGHT) + originY);
     releaseSem(getMap()->cellsSemID, (destX * getMap()->SO_HEIGHT) + destY);
@@ -181,8 +201,6 @@ void moveMyselfIn(int destX, int destY)
 
     struct timespec request = {0, getMapCellAt(destX, destY)->holdingTime};
     struct timespec remaining;
-    /* */ fprintf(fp, "%d\tx:%d y:%d\n", getpid(), myself->posX, myself->posY);
-    /*  kill(getMap()->masterProcessID, SIGUSR1);*/
     nanosleep(&request, &remaining);
 };
 
@@ -243,15 +261,29 @@ void taxiKickoff()
         printf("Something's wrong on signal handler change");
     };
     message imHere;
-    imHere.mtype = MSG_KICKOFF;
-    msgsnd(msgID, &imHere, sizeof(message), 0);
+    imHere.driverID = myself->number;
+    imHere.sourceX =
+    imHere.sourceY = 
+    imHere.destX = imHere.destY = 66;
+    imHere.mtype = 1;
+    if (msgsnd(msgIDKickoff, &imHere, sizeof(message), 0) == -1)
+    {
+
+        fprintf(errorLog, "taxi:%d\tx:%d\ty:%d sndtxikick %s\n", myTaxiNumber, sourceX, sourceY, strerror(errno));
+        fflush(errorLog);
+    };
 
     /*Taxi si mette in attesa di richieste*/
     while (keepOn)
     {
         sourceX = sourceY = destX = destY = -1;
         message requestPlaceholder;
-        msgrcv(msgID, &requestPlaceholder, sizeof(message), MSG_CLIENT_CALL, 0);
+        if (msgrcv(msgIDClientCall, &requestPlaceholder, sizeof(message), 0, 0) == -1)
+        {
+
+            fprintf(errorLog, "taxi:%d\tx:%d\ty:%d rcvclicall %s\n", myTaxiNumber, myself->posX, myself->posY, strerror(errno));
+            fflush(errorLog);
+        };
 
         sourceX = requestPlaceholder.sourceX;
         sourceY = requestPlaceholder.sourceY;
@@ -259,10 +291,14 @@ void taxiKickoff()
         destY = requestPlaceholder.destY;
 
         requestPlaceholder.driverID = myTaxiNumber;
-        requestPlaceholder.mtype = MSG_CLIENT_TAKEN;
 
-        /* */ fprintf(fp, "%d\tx:%d y:%d\tRICHIESTA\n", getpid(), sourceX, sourceY);
-        msgsnd(msgID, &requestPlaceholder, sizeof(message), 0);
+        requestPlaceholder.mtype = 1;
+        if (msgsnd(msgIDClientTaken, &requestPlaceholder, sizeof(message), 0) == -1)
+        {
+
+            fprintf(errorLog, "taxi:%d\tx:%d\ty:%d sndclitak %s\n", myTaxiNumber, sourceX, sourceY, strerror(errno));
+            fflush(errorLog);
+        };
 
         driveTaxi(sourceX, sourceY);
         /* making source cell available again */
@@ -278,10 +314,13 @@ void taxiKickoff()
             raise(SIGALRM);
         }
         alarm(getMap()->SO_TIMEOUT);
-        /*  */ fprintf(fp, "%d\tx:%d y:%d\PRELEVATO\n", getpid(), sourceX, sourceY);
+        requestPlaceholder.mtype = 1;
+        if (msgsnd(msgIDRequestBegin, &requestPlaceholder, sizeof(message), 0) == -1)
+        {
 
-        requestPlaceholder.mtype = MSG_REQUEST_BEGIN;
-        msgsnd(msgID, &requestPlaceholder, sizeof(message), 0);
+            fprintf(errorLog, "taxi:%d\tx:%d\ty:%d sndreqbeg %s\n", myTaxiNumber, sourceX, sourceY, strerror(errno));
+            fflush(errorLog);
+        };
 
         driveTaxi(destX, destY);
         /* making end cell available again */
@@ -297,10 +336,14 @@ void taxiKickoff()
             raise(SIGALRM);
         }
         alarm(getMap()->SO_TIMEOUT);
-        fprintf(fp, "%d\tx:%d y:%d\ARRIVATO\n", getpid(), sourceX, sourceY);
 
-        requestPlaceholder.mtype = MSG_REQUEST_DONE;
-        msgsnd(msgID, &requestPlaceholder, sizeof(message), 0);
+        requestPlaceholder.mtype = 1;
+        if (msgsnd(msgIDRequestDone, &requestPlaceholder, sizeof(message), 0) == -1)
+        {
+
+            fprintf(errorLog, "taxi:%d\tx:%d\ty:%d sndreqdon %s\n", myTaxiNumber, sourceX, sourceY, strerror(errno));
+            fflush(errorLog);
+        };
         myself->ridesDone++;
     }
 }

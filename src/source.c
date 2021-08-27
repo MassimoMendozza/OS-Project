@@ -5,17 +5,18 @@
 #include <semaphore.h>
 #include <sys/shm.h>
 #include <signal.h>
-#include<errno.h>
+#include <errno.h>
 
 #include "shmUtils.h"
 #include "TaxiElements.h"
 #include "BinSemaphores.h"
 
-int myNumber, shmID, msgID;
+int myNumber, shmID, msgIDClientCall;
 int myClientNumber;
 person *myselfClient;
 
 FILE *fp;
+FILE *errorLog;
 
 int goOn;
 void kickoffClientHandler(int a)
@@ -26,13 +27,15 @@ void kickoffClientHandler(int a)
 int main(int argc, char *argv[])
 {
     /*printf("Client n%d with pid %d\n", myNumber, getpid());*/
-    
-    myNumber = atoi(argv[1]);
-    shmID=atoi(argv[2]);
-    msgID=atoi(argv[3]);
+    errorLog = fopen("errorLog.txt", "ab+");
 
-    void *addrstart=shmat(shmID, NULL, 0);
-    if(addrstart==-1){
+    myNumber = atoi(argv[1]);
+    shmID = atoi(argv[2]);
+    msgIDClientCall = atoi(argv[3]);
+
+    void *addrstart = shmat(shmID, NULL, 0);
+    if (addrstart == -1)
+    {
         strerror(errno);
     }
     setAddrstart(addrstart);
@@ -65,11 +68,11 @@ int main(int argc, char *argv[])
 
 void clientKickoff()
 {
-    srand(getpid()%time(NULL));
+    srand(getpid() % time(NULL));
     message imHere;
 
     FILE *fp;
-    fp=fopen("try.txt", "ab+");
+    fp = fopen("try.txt", "ab+");
     struct timespec request = {0, 100000000};
     struct timespec remaining;
 
@@ -90,7 +93,6 @@ void clientKickoff()
         int sourceFound, destFound;
         sourceFound = destFound = 0;
 
-
         for (sourceX = rand() % getMap()->SO_WIDTH; sourceX < getMap()->SO_WIDTH && !sourceFound; sourceX++)
         {
             for (sourceY = rand() % getMap()->SO_HEIGHT; sourceY < getMap()->SO_HEIGHT && !sourceFound; sourceY++)
@@ -100,7 +102,9 @@ void clientKickoff()
 
                     if (reserveSem(getMap()->cellsSemID, (sourceX * getMap()->SO_HEIGHT) + sourceY) == -1)
                     {
-                        /* fprintf(stdout, "%s", strerror(errno)); */
+
+                        fprintf(errorLog, "source:%d\tx:%d\ty:%d semerrorsource %s\n", myClientNumber, sourceX, sourceY, strerror(errno));
+                        fflush(errorLog);
                     }
                     else
                     {
@@ -116,23 +120,25 @@ void clientKickoff()
 
                                     if (reserveSem(getMap()->cellsSemID, (destX * getMap()->SO_HEIGHT) + destY) == -1)
                                     {
-                                       /* fprintf(stdout, "%s", strerror(errno));
-                                     */ }
-                                       else
-                                       {
-                                           getMapCellAt(destX, destY)->isAvailable = 0;
-                                           destFound = 1;
-                                           imHere.destX = destX;
-                                           imHere.destY = destY;
-                                           fprintf(fp, "%d sX:%d sY:%d dD:%d dY:%d\n", getpid(),sourceX,sourceY,destX,destY);
-                                           fflush(fp);
-                                           releaseSem(getMap()->cellsSemID, (destX * getMap()->SO_HEIGHT) + destY);
-                                       };
+
+                                        fprintf(errorLog, "source:%d\tx:%d\ty:%d semerrordest %s\n", myClientNumber, destX, destY, strerror(errno));
+                                        fflush(errorLog);
+                                    }
+                                    else
+                                    {
+                                        getMapCellAt(destX, destY)->isAvailable = 0;
+                                        destFound = 1;
+                                        imHere.destX = destX;
+                                        imHere.destY = destY;
+                                        fprintf(fp, "%d sX:%d sY:%d dD:%d dY:%d\n", getpid(), sourceX, sourceY, destX, destY);
+                                        fflush(fp);
+                                        releaseSem(getMap()->cellsSemID, (destX * getMap()->SO_HEIGHT) + destY);
+                                    };
                                 }
                             }
-                            if ((destX == getMap()->SO_WIDTH - 1) && (destY == getMap()->SO_HEIGHT - 1))
+                            if ((destX == getMap()->SO_WIDTH - 1) && (destY == getMap()->SO_HEIGHT ))
                             {
-                                destX = destY = 0;
+                                destX = destY = destFound=0;
                             }
                         }
                         imHere.sourceX = sourceX;
@@ -141,20 +147,18 @@ void clientKickoff()
                     };
                 }
             }
-            if ((sourceX == getMap()->SO_WIDTH - 1) && (sourceY == getMap()->SO_HEIGHT - 1))
+            if ((sourceX == getMap()->SO_WIDTH - 1) && (sourceY == getMap()->SO_HEIGHT ))
             {
-                sourceX = sourceY = 0;
-            }        
+                sourceX = sourceY = sourceFound = 0;
+            }
         }
-        
 
-
-        imHere.mtype = MSG_CLIENT_CALL;
-
+        imHere.driverID=imHere.mtype=1;
         nanosleep(&request, &remaining);
-        if (msgsnd(msgID, &imHere, sizeof(message), 0) == -1)
+        if (msgsnd(msgIDClientCall, &imHere, sizeof(message), 0) == -1)
         {
-            /*printf("%s", strerror(errno));*/
+                        fprintf(errorLog, "source:%d\tx:%d\ty:%d msgsndclientcall %s\n", myClientNumber,sourceX, sourceY, strerror(errno));
+                        fflush(errorLog);
         }
     }
 }

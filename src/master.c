@@ -4,6 +4,7 @@
 #include <time.h>
 #include <ncurses.h>
 #include <unistd.h>
+#include <sys/msg.h>
 
 #include <semaphore.h>
 
@@ -23,6 +24,7 @@ Variables used to parse config file
 */
 
 FILE *config;
+FILE *errorLog;
 char AttributeName[20];
 char EqualsPlaceHolder;
 int ParsedValue;
@@ -30,10 +32,25 @@ int updateMap;
 int keepOn;
 
 key_t ipcKey;
+key_t ipcKeyKickoff;
+key_t ipcKeyTimeout;
+key_t ipcKeyTaxiCell;
+key_t ipcKeyClientCall;
+key_t ipcKeyClientTaken;
+key_t ipcKeyRequestBegin;
+key_t ipcKeyRequestDone;
+
 int projID;
 
 masterMap *map;
-int shmID, msgID, activeTaxi, updatedmap;
+int shmID, activeTaxi, updatedmap,
+    msgIDKickoff,
+    msgIDTimeout,
+    msgIDTaxiCell,
+    msgIDClientCall,
+    msgIDClientTaken,
+    msgIDRequestBegin,
+    msgIDRequestDone;
 updatedmap = 0;
 void *addrstart; /*the addres of the shared memory portion (first element is map)*/
 
@@ -42,7 +59,7 @@ int h, w, a;
 
 void alarmMaster(int sig)
 {
-    keepOn=0;
+    keepOn = 0;
 }
 
 /*
@@ -256,9 +273,17 @@ masterMap *mapFromConfig(char *configPath)
 {
     masterMap *map = readConfig(configPath);
 
-    shmID = allocateShm(ipcKey, map);         /*create the shared memory*/
-    msgID = msgget(ipcKey, IPC_CREAT | 0666); /*create the queue of messages*/
-    addrstart = shmat(shmID, NULL, 0);        /*return the addres of the shared memory portion*/
+    shmID = allocateShm(ipcKey, map);
+    
+    msgIDKickoff = msgget(ipcKeyKickoff, IPC_CREAT | 0666);
+    msgIDTimeout = msgget(ipcKeyTimeout, IPC_CREAT | 0666);
+    msgIDTaxiCell = msgget(ipcKeyTaxiCell, IPC_CREAT | 0666);
+    msgIDClientCall = msgget(ipcKeyClientCall, IPC_CREAT | 0666);
+    msgIDClientTaken = msgget(ipcKeyClientTaken, IPC_CREAT | 0666);
+    msgIDRequestBegin = msgget(ipcKeyRequestBegin, IPC_CREAT | 0666);
+    msgIDRequestDone = msgget(ipcKeyRequestDone, IPC_CREAT | 0666);
+
+    addrstart = shmat(shmID, NULL, 0); /*return the addres of the shared memory portion*/
 
     setAddrstart(addrstart); /*setting the parameter for the address of sh. memo.*/
     putMapInShm(map);        /*copy in the sh. memo. the parameters of the map*/
@@ -276,20 +301,43 @@ void beFruitful() /*creation of processes like taxi and client*/
 
     map = getMap();
 
+    char numberString[10];
+    char shmString[10];
+    char msgKickString[10];
+    char msgTimeString[10];
+    char msgTaCeString[10];
+    char msgClCaString[10];
+    char msgClTaString[10];
+    char msgReBeString[10];
+    char msgReDoString[10];
+    sprintf(shmString, "%d", shmID);
+    sprintf(msgKickString, "%d", msgIDKickoff);
+    sprintf(msgTimeString, "%d", msgIDTimeout);
+    sprintf(msgTaCeString, "%d", msgIDTaxiCell);
+    sprintf(msgClCaString, "%d", msgIDClientCall);
+    sprintf(msgClTaString, "%d", msgIDClientTaken);
+    sprintf(msgReBeString, "%d", msgIDRequestBegin);
+    sprintf(msgReDoString, "%d", msgIDRequestDone);
+
     shouldIBeATaxi = shouldIBeAClient = 0;
     for (a = 0; a < map->SO_TAXI; a++)
     {
         if (fork() == 0)
         {
-            shouldIBeATaxi = 1;
-            char numberString[10];
-            char shmString[10];
-            char msgString[10];
-            sprintf(numberString, "%d", a);
-            sprintf(shmString, "%d", shmID);
-            sprintf(msgString, "%d", msgID);
 
-            char *paramList[] = {"./bin/taxi", numberString, shmString, msgString, NULL};
+            sprintf(numberString, "%d", a);
+
+            char *paramList[] = {"./bin/taxi",
+                                 numberString,
+                                 shmString,
+                                 msgKickString,
+                                 msgTimeString,
+                                 msgTaCeString,
+                                 msgClCaString,
+                                 msgClTaString,
+                                 msgReBeString,
+                                 msgReDoString,
+                                 NULL};
             char *environ[] = {NULL};
             if (execve("./bin/taxi", paramList, environ) == -1)
             {
@@ -298,38 +346,25 @@ void beFruitful() /*creation of processes like taxi and client*/
             break;
         }
     }
-    if (!shouldIBeATaxi)
+
+    for (a = 0; a < map->SO_SOURCES; a++)
     {
-
-        for (a = 0; a < map->SO_SOURCES; a++)
+        if (fork() == 0)
         {
-            if (fork() == 0)
-            {
-                shouldIBeAClient = 1;
-                char numberString[10];
-                char shmString[10];
-                char msgString[10];
-                sprintf(numberString, "%d", a);
-                sprintf(shmString, "%d", shmID);
-                sprintf(msgString, "%d", msgID);
+            sprintf(numberString, "%d", a);
 
-                char *const paramList[] = {"./bin/source", numberString, shmString, msgString, NULL};
-                char *environ[] = {NULL};
-                execve("./bin/source", paramList, environ);
-                break;
-            }
+            char *const paramList[] = {"./bin/source", numberString, shmString, msgClCaString, NULL};
+            char *environ[] = {NULL};
+            execve("./bin/source", paramList, environ);
+            break;
         }
     }
-    if ((!shouldIBeAClient) && (!shouldIBeATaxi))
-    {
-
-        bornAMaster();
-    }
+    bornAMaster();
 }
 
 void bornAMaster()
 {
-    keepOn=1;
+    keepOn = 1;
     wmove(win, 0, 0);
     getMap()->masterProcessID = getpid();
 
@@ -384,11 +419,11 @@ void bornAMaster()
     a = 0;
     while (a < getMap()->SO_TAXI)
     {
-        if ((msgrcv(msgID, &placeHolder, sizeof(message), MSG_TAXI_CELL, 0)) == -1)
+        if ((msgrcv(msgIDTaxiCell, &placeHolder, sizeof(message), 0, 0)) == -1)
         {
 
-            /* printw("Can't receive message to kickoff taxi n%d", getTaxi(a)->processid);
-            refresh();*/
+            mvprintw(3, 2, "Can't receive message to kickoff taxi, %s", strerror(errno));
+            refresh();
         }
         else
         {
@@ -436,6 +471,12 @@ void bornAMaster()
     for (a = 0; a < map->SO_TAXI; a++)
     {
         kill(getTaxi(a)->processid, SIGUSR1);
+        
+        if (msgrcv(msgIDKickoff, &placeHolder, sizeof(message), 0,IPC_NOWAIT) != -1)
+        {
+            activeTaxi++;
+            /*printf("Taxi n%d posizionato in x:%d, y:%d, cella a %d/%d\n", placeHolder.driverID, placeHolder.sourceX, placeHolder.sourceY, getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->currentElements, getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->maxElements);*/
+        }
         mvprintw(2, 2, "Kicking the taxi... %d/%d", a + 1, map->SO_TAXI);
         refresh();
     }
@@ -450,7 +491,7 @@ void bornAMaster()
 
     while (activeTaxi < map->SO_TAXI)
     {
-        if (msgrcv(msgID, &placeHolder, sizeof(message), MSG_KICKOFF, IPC_NOWAIT) != -1)
+        if (msgrcv(msgIDKickoff, &placeHolder, sizeof(message), 0,IPC_NOWAIT) != -1)
         {
             activeTaxi++;
             mvprintw(2, 2, "Taxi alive: %d/%d   ", activeTaxi, map->SO_TAXI);
@@ -465,7 +506,6 @@ void bornAMaster()
     refresh();
 
     message kickoffMessage;
-    kickoffMessage.mtype = MSG_KICKOFF;
 
     move(2, 0);
     clrtoeol();
@@ -490,53 +530,73 @@ void bornAMaster()
     mvprintw(2, 2, "Active taxis: %d/%d   ", activeTaxi, map->SO_TAXI);
     refresh();
 
+
+                char numberString[10];
+                char shmString[10];
+                char msgKickString[10];
+                char msgTimeString[10];
+                char msgTaCeString[10];
+                char msgClCaString[10];
+                char msgClTaString[10];
+                char msgReBeString[10];
+                char msgReDoString[10];
+                sprintf(shmString, "%d", shmID);
+                sprintf(msgKickString, "%d", msgIDKickoff);
+                sprintf(msgTimeString, "%d", msgIDTimeout);
+                sprintf(msgTaCeString, "%d", msgIDTaxiCell);
+                sprintf(msgClCaString, "%d", msgIDClientCall);
+                sprintf(msgClTaString, "%d", msgIDClientTaken);
+                sprintf(msgReBeString, "%d", msgIDRequestBegin);
+                sprintf(msgReDoString, "%d", msgIDRequestDone);
     int requestTaken, requestBegin, requestDone, requestAborted, resurrectedTaxi;
     requestBegin = requestDone = requestTaken = requestAborted = resurrectedTaxi = 0;
     while (keepOn)
     {
-
         message placeHolder;
-        if ((msgrcv(msgID, &placeHolder, sizeof(message), MSG_TAXI_CELL, IPC_NOWAIT)) != -1)
+        if ((msgrcv(msgIDTaxiCell, &placeHolder, sizeof(message), 0,IPC_NOWAIT)) != -1)
         {
             kill(getTaxi(placeHolder.driverID)->processid, SIGUSR1);
             resurrectedTaxi++;
         } /* checking if someone's killed itself*/
-        if (msgrcv(msgID, &placeHolder, sizeof(message), MSG_TIMEOUT, IPC_NOWAIT) != -1)
+        if (msgrcv(msgIDTimeout, &placeHolder, sizeof(message),0, IPC_NOWAIT) != -1)
         {
 
             kill(getTaxi(placeHolder.driverID)->processid, SIGKILL);
-            
+
             activeTaxi--;
             move(2, 0);
             clrtoeol();
-            
+
             requestAborted++;
             mvprintw(2, 2, "Active taxis: %d/%d\t Resurrected taxis:%d", activeTaxi, map->SO_TAXI, resurrectedTaxi);
-            
+
             int pid = fork();
             if (pid == 0)
             {
-                char numberString[10];
-                char shmString[10];
-                char msgString[10];
-                sprintf(numberString, "%d", placeHolder.driverID);
-                sprintf(shmString, "%d", shmID);
-                sprintf(msgString, "%d", msgID);
 
-                char *paramList[] = {"./bin/taxi", numberString, shmString, msgString, NULL};
+                sprintf(numberString, "%d", placeHolder.driverID);
+
+                char *paramList[] = {"./bin/taxi",
+                                     numberString,
+                                     shmString,
+                                     msgKickString,
+                                     msgTimeString,
+                                     msgTaCeString,
+                                     msgClCaString,
+                                     msgClTaString,
+                                     msgReBeString,
+                                     msgReDoString,
+                                     NULL};
                 char *environ[] = {NULL};
                 if (execve("./bin/taxi", paramList, environ) == -1)
                 {
-                    fprintf(stdout, "%s", strerror(errno));
+                    printf("%s", strerror(errno));
                 };
-            }else if(pid<0){
-                fprintf(stderr, "%s", strerror(errno));
-                exit(-1);
+                refresh();
+                /*printf("Taxi n%d suicidato\n", placeHolder.driverID);*/
             }
-            refresh();
-            /*printf("Taxi n%d suicidato\n", placeHolder.driverID);*/
         }
-        if (msgrcv(msgID, &placeHolder, sizeof(message), MSG_KICKOFF, IPC_NOWAIT) != -1)
+        if (msgrcv(msgIDKickoff, &placeHolder, sizeof(message), 0,IPC_NOWAIT) != -1)
         {
             activeTaxi++;
             move(2, 0);
@@ -545,34 +605,31 @@ void bornAMaster()
             refresh();
             /*printf("Taxi n%d posizionato in x:%d, y:%d, cella a %d/%d\n", placeHolder.driverID, placeHolder.sourceX, placeHolder.sourceY, getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->currentElements, getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->maxElements);*/
         }
-        if (msgrcv(msgID, &placeHolder, sizeof(message), MSG_CLIENT_TAKEN, IPC_NOWAIT) != -1)
+        if (msgrcv(msgIDClientTaken, &placeHolder, sizeof(message), 0,IPC_NOWAIT) != -1)
         {
             requestTaken++;
             updateMap = 1;
             move(3, 0);
             clrtoeol();
             mvprintw(3, 2, "Requests\tTaken:%d\tStarted:%d\tEnded:%d\tAborted:%d", requestTaken, requestBegin, requestDone, requestAborted);
-
         }
 
-        if (msgrcv(msgID, &placeHolder, sizeof(message), MSG_REQUEST_BEGIN, IPC_NOWAIT) != -1)
+        if (msgrcv(msgIDRequestBegin, &placeHolder, sizeof(message), 0,IPC_NOWAIT) != -1)
         {
             requestBegin++;
             updateMap = 1;
             move(3, 0);
             clrtoeol();
             mvprintw(3, 2, "Requests\tTaken:%d\tStarted:%d\tEnded:%d\tAborted:%d", requestTaken, requestBegin, requestDone, requestAborted);
-
         }
 
-        if (msgrcv(msgID, &placeHolder, sizeof(message), MSG_REQUEST_DONE, IPC_NOWAIT) != -1)
+        if (msgrcv(msgIDRequestDone, &placeHolder, sizeof(message), 0,IPC_NOWAIT) != -1)
         {
             requestDone++;
             updateMap = 1;
             move(3, 0);
             clrtoeol();
             mvprintw(3, 2, "Requests\tTaken:%d\tStarted:%d\tEnded:%d\tAborted:%d", requestTaken, requestBegin, requestDone, requestAborted);
-
         }
 
         /* Checking if map is to update */
@@ -606,7 +663,14 @@ void bornAMaster()
     };
 
     semctl(getMap()->cellsSemID, 1200, IPC_RMID);
-    msgctl(msgID, IPC_RMID, NULL);
+    msgctl(msgIDKickoff, IPC_RMID, NULL);
+    msgctl(msgIDTimeout, IPC_RMID, NULL);
+    msgctl(msgIDTaxiCell, IPC_RMID, NULL);
+    msgctl(msgIDClientCall, IPC_RMID, NULL);
+    msgctl(msgIDClientTaken, IPC_RMID, NULL);
+    msgctl(msgIDRequestBegin, IPC_RMID, NULL);
+    msgctl(msgIDRequestDone, IPC_RMID, NULL);
+
     shmctl(shmID, IPC_RMID, NULL);
     move(h - 1, 0);
     clrtoeol();
@@ -618,15 +682,16 @@ void bornAMaster()
         sprintf(command, "kill %d", getPerson(a)->processid);
         system(command);*/
         kill(getPerson(a)->processid, SIGKILL);
-        waitpid(getPerson(a)->processid ,NULL, WNOHANG);
+        waitpid(getPerson(a)->processid, NULL, WNOHANG);
     }
     for (a = 0; a < getMap()->SO_TAXI; a++)
     {
         /* char command[50];
         sprintf(command, "kill %d", getTaxi(a)->processid);
-        system(command);*/ 
-        if(kill(getTaxi(a)->processid,SIGKILL)==-1){
-            fprintf(stdout,"%s", strerror(errno));
+        system(command);*/
+        if (kill(getTaxi(a)->processid, SIGKILL) == -1)
+        {
+            fprintf(stdout, "%s", strerror(errno));
         };
         waitpid(getTaxi(a)->processid, NULL, WNOHANG);
     }
@@ -666,6 +731,13 @@ int main(int argc, char *argv[])
 
     projID = rand();
     ipcKey = ftok(configPath, projID);
+    ipcKeyKickoff = ftok(configPath, projID + 1);
+    ipcKeyTimeout = ftok(configPath, projID + 2);
+    ipcKeyTaxiCell = ftok(configPath, projID + 3);
+    ipcKeyClientCall = ftok(configPath, projID + 4);
+    ipcKeyClientTaken = ftok(configPath, projID + 5);
+    ipcKeyRequestBegin = ftok(configPath, projID + 6);
+    ipcKeyRequestDone = ftok(configPath, projID + 7);
 
     map = mapFromConfig(CONFIGFULLPATH);
 
