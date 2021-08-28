@@ -520,11 +520,14 @@ void bornAMaster()
         mvprintw(2, 2, "Kicked clients: %d/%d   ", a + 1, map->SO_SOURCES);
         refresh();
     }
+    alarm(getMap()->SO_DURATION);
+
+    int requestTaken, requestBegin, requestDone, requestAborted, resurrectedTaxi, spammedRequests;
+    requestBegin = requestDone = requestTaken = requestAborted = resurrectedTaxi = 0;
 
     move(h - 1, 0);
     clrtoeol();
-    mvprintw(h - 1, 0, "Status: Simulation's going.");
-    alarm(getMap()->SO_DURATION);
+    mvprintw(h - 1, 0, "Status: Simulation's going. CTRL+B to spam SO_SOURCES requests, successfuly spammed requests: %d.", spammedRequests);
     refresh();
 
     move(2, 0);
@@ -549,11 +552,25 @@ void bornAMaster()
     sprintf(msgClTaString, "%d", msgIDClientTaken);
     sprintf(msgReBeString, "%d", msgIDRequestBegin);
     sprintf(msgReDoString, "%d", msgIDRequestDone);
-    int requestTaken, requestBegin, requestDone, requestAborted, resurrectedTaxi;
-    requestBegin = requestDone = requestTaken = requestAborted = resurrectedTaxi = 0;
+
     while (keepOn)
     {
         message placeHolder;
+        if (getch() == ctrl('b'))
+        {
+            for (a = 0; a < getMap()->SO_SOURCES; a++)
+            {
+                if (kill(getPerson(a)->processid, SIGUSR2) != -1)
+                {
+                    spammedRequests++;
+                };
+            }
+
+            move(h - 1, 0);
+            clrtoeol();
+            mvprintw(h - 1, 0, "Status: Simulation's going. CTRL+B to spam SO_SOURCES requests, successfuly spammed requests: %d.", spammedRequests);
+            refresh();
+        }
         if ((msgrcv(msgIDTaxiCell, &placeHolder, sizeof(message), 0, IPC_NOWAIT)) != -1)
         {
             kill(getTaxi(placeHolder.driverID)->processid, SIGUSR1);
@@ -766,47 +783,59 @@ void bornAMaster()
 
     taxi *cellsMax, *timeMax, *reqMax;
     Node *tempTaxi;
-    tempTaxi=deadTaxis->first;
-    cellsMax=timeMax=reqMax=getTaxi(0);
+    tempTaxi = deadTaxis->first;
+    cellsMax = timeMax = reqMax = getTaxi(0);
     /* Seeking taxi who has done the longest distance*/
-    for(a=0; a<getMap()->SO_TAXI;a++){
-        if(cellsMax->distanceDone<getTaxi(a)->distanceDone){
-            cellsMax=getTaxi(a);
+    for (a = 0; a < getMap()->SO_TAXI; a++)
+    {
+        if (cellsMax->distanceDone < getTaxi(a)->distanceDone)
+        {
+            cellsMax = getTaxi(a);
         }
     }
-    while(tempTaxi!=deadTaxis->last){
-        if(cellsMax->distanceDone<tempTaxi->element->distanceDone){
-            cellsMax=tempTaxi->element;
+    while (tempTaxi != deadTaxis->last)
+    {
+        if (cellsMax->distanceDone < tempTaxi->element->distanceDone)
+        {
+            cellsMax = tempTaxi->element;
         }
-        tempTaxi=tempTaxi->next;
+        tempTaxi = tempTaxi->next;
     }
-    
+
     /* Seeking taxi who has done the longest time*/
-    tempTaxi=deadTaxis->first;
-    for(a=0; a<getMap()->SO_TAXI;a++){
-        if(timeMax->maxTime<getTaxi(a)->maxTime){
-            timeMax=getTaxi(a);
+    tempTaxi = deadTaxis->first;
+    for (a = 0; a < getMap()->SO_TAXI; a++)
+    {
+        if (timeMax->maxTime < getTaxi(a)->maxTime)
+        {
+            timeMax = getTaxi(a);
         }
     }
-    while(tempTaxi!=deadTaxis->last){
-        if(timeMax->maxTime<tempTaxi->element->maxTime){
-            timeMax=tempTaxi->element;
+    while (tempTaxi != deadTaxis->last)
+    {
+        if (timeMax->maxTime < tempTaxi->element->maxTime)
+        {
+            timeMax = tempTaxi->element;
         }
-        tempTaxi=tempTaxi->next;
+        tempTaxi = tempTaxi->next;
     }
 
     /* Seeking taxi who took the highest request*/
-    tempTaxi=deadTaxis->first;
-    for(a=0; a<getMap()->SO_TAXI;a++){
-        if(reqMax->requestsTaken<getTaxi(a)->requestsTaken){
-            reqMax=getTaxi(a);
+    tempTaxi = deadTaxis->first;
+    for (a = 0; a < getMap()->SO_TAXI; a++)
+    {
+        if (reqMax->requestsTaken < getTaxi(a)->requestsTaken)
+        {
+            reqMax = getTaxi(a);
         }
     }
-    while(tempTaxi!=deadTaxis->last){
-        if(reqMax->requestsTaken<tempTaxi->element->requestsTaken){
-            reqMax=tempTaxi->element;
+    while (tempTaxi != deadTaxis->last)
+    {
+        if (reqMax->requestsTaken < tempTaxi->element->requestsTaken)
+        {
+            reqMax = tempTaxi->element;
         }
-        tempTaxi=tempTaxi->next;
+        tempTaxi = tempTaxi->next;
     }
     nodelay(stdscr, FALSE);
     mvprintw(h - 1, 0, "Status: Source's location is shown. Press any key to show top cells.");
@@ -839,7 +868,7 @@ void bornAMaster()
     mvprintw(9, 2, "Taxi PID:%d, has done a travel in %ld nanosec.", timeMax->processid, timeMax->maxTime);
     mvprintw(11, 2, "The taxi who took most requests:");
     mvprintw(12, 2, "Taxi PID:%d, took %d requests.", reqMax->processid, reqMax->requestsTaken);
-    
+
     refresh();
     getch();
 

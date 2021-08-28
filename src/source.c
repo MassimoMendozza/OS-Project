@@ -11,8 +11,7 @@
 #include "TaxiElements.h"
 #include "BinSemaphores.h"
 
-int myNumber, shmID, msgIDClientCall;
-int myNumber;
+int myNumber, shmID, msgIDClientCall, addRequest, counter;
 person *myself;
 
 FILE *fp;
@@ -24,11 +23,17 @@ void kickoffClientHandler(int a)
     goOn = 0;
 }
 
+void manualRequest(int a)
+{
+    addRequest++;
+    signal(SIGUSR2, &manualRequest);
+}
+
 int main(int argc, char *argv[])
 {
+    addRequest=1;
     srand(getpid() % time(NULL));
     errorLog = fopen("errorLog.txt", "ab+");
-
 
     signal(SIGUSR1, &kickoffClientHandler);
 
@@ -90,6 +95,7 @@ int main(int argc, char *argv[])
 void clientKickoff()
 {
     message imHere;
+    signal(SIGUSR2, &manualRequest);
 
     FILE *fp;
     fp = fopen("try.txt", "ab+");
@@ -98,9 +104,11 @@ void clientKickoff()
 
     while (1)
     {
+        nanosleep(&request, &remaining);
+        for(counter=0;counter<addRequest; counter++){
 
-        int x,y,found;
-        found=0;
+        int x, y, found;
+        found = 0;
 
         for (x = rand() % getMap()->SO_WIDTH; x < getMap()->SO_WIDTH && !found; x++)
         {
@@ -119,14 +127,16 @@ void clientKickoff()
             }
         }
 
-        imHere.clientID=myNumber;
-        imHere.x=x;
-        imHere.y=y;
-        nanosleep(&request, &remaining);
+        imHere.clientID = myNumber;
+        imHere.x = x;
+        imHere.y = y;
         if (msgsnd(msgIDClientCall, &imHere, sizeof(message), 0) == -1)
         {
             fprintf(errorLog, "source:%d\tx:%d\ty:%d msgsndclientcall %s\n", myNumber, myself->posX, myself->posY, strerror(errno));
             fflush(errorLog);
         }
+        }
+        addRequest=1;
+
     }
 }
