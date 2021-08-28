@@ -569,7 +569,7 @@ void bornAMaster()
             dead->posX = getTaxi(placeHolder.driverID)->posX;
             dead->posY = getTaxi(placeHolder.driverID)->posY;
             dead->processid = getTaxi(placeHolder.driverID)->processid;
-            dead->ridesDone = getTaxi(placeHolder.driverID)->ridesDone;
+            dead->requestsTaken = getTaxi(placeHolder.driverID)->requestsTaken;
             addTaxi(deadTaxis, dead);
 
             /* activeTaxi--; */
@@ -724,55 +724,125 @@ void bornAMaster()
             }
         }
     }
+    activeTaxi = temptaxis;
     move(2, 0);
     clrtoeol();
+    nodelay(stdscr, FALSE);
     mvprintw(2, 2, "Active taxis: %d/%d\t Resurrected taxis:%d", activeTaxi, map->SO_TAXI, resurrectedTaxi);
 
     mvprintw(h - 1, 0, "Status: Simulation's done, making up the statistics...");
 
     move(h - 1, 0);
     clrtoeol();
+    refresh();
     /* making so_top_cell array */
-    typedef struct _tempCell{
+    typedef struct _tempCell
+    {
         int x, y;
     } tempCell;
     tempCell **top = malloc(sizeof(tempCell) * getMap()->SO_TOP_CELLS);
     int x, y, foundX, foundY;
     mapCell *temp;
-    temp=getMapCellAt(0,0);
+    temp = getMapCellAt(0, 0);
     for (a = 0; a < getMap()->SO_TOP_CELLS; a++)
     {
         for (x = 0; x < map->SO_WIDTH; x++)
         {
             for (y = 0; y < map->SO_HEIGHT; y++) /*creation of cells with capacity and time*/
             {
-                if(temp->passedBy<getMapCellAt(x,y)->passedBy){
-                    temp=getMapCellAt(x,y);
-                    foundX=x;
-                    foundY=y;
+                if (temp->passedBy < getMapCellAt(x, y)->passedBy)
+                {
+                    temp = getMapCellAt(x, y);
+                    foundX = x;
+                    foundY = y;
                 }
             }
         }
-        top[a]=malloc(sizeof(tempCell));
-        top[a]->x=foundX; top[a]->y=foundY;
-        temp->passedBy=0;
+        top[a] = malloc(sizeof(tempCell));
+        top[a]->x = foundX;
+        top[a]->y = foundY;
+        temp->passedBy = 0;
     }
 
-    mvprintw(h - 1, 0, "Status: Simulation's done, source's location is shown. press to show top cells.");
+    taxi *cellsMax, *timeMax, *reqMax;
+    Node *tempTaxi;
+    tempTaxi=deadTaxis->first;
+    cellsMax=timeMax=reqMax=getTaxi(0);
+    /* Seeking taxi who has done the longest distance*/
+    for(a=0; a<getMap()->SO_TAXI;a++){
+        if(cellsMax->distanceDone<getTaxi(a)->distanceDone){
+            cellsMax=getTaxi(a);
+        }
+    }
+    while(tempTaxi!=deadTaxis->last){
+        if(cellsMax->distanceDone<tempTaxi->element->distanceDone){
+            cellsMax=tempTaxi->element;
+        }
+        tempTaxi=tempTaxi->next;
+    }
+    
+    /* Seeking taxi who has done the longest time*/
+    tempTaxi=deadTaxis->first;
+    for(a=0; a<getMap()->SO_TAXI;a++){
+        if(timeMax->maxTime<getTaxi(a)->maxTime){
+            timeMax=getTaxi(a);
+        }
+    }
+    while(tempTaxi!=deadTaxis->last){
+        if(timeMax->maxTime<tempTaxi->element->maxTime){
+            timeMax=tempTaxi->element;
+        }
+        tempTaxi=tempTaxi->next;
+    }
+
+    /* Seeking taxi who took the highest request*/
+    tempTaxi=deadTaxis->first;
+    for(a=0; a<getMap()->SO_TAXI;a++){
+        if(reqMax->requestsTaken<getTaxi(a)->requestsTaken){
+            reqMax=getTaxi(a);
+        }
+    }
+    while(tempTaxi!=deadTaxis->last){
+        if(reqMax->requestsTaken<tempTaxi->element->requestsTaken){
+            reqMax=tempTaxi->element;
+        }
+        tempTaxi=tempTaxi->next;
+    }
+    nodelay(stdscr, FALSE);
+    mvprintw(h - 1, 0, "Status: Source's location is shown. Press any key to show top cells.");
     refresh();
     getch();
     for (a = 0; a < getMap()->SO_TOP_CELLS; a++)
     {
-        
-            move(top[a]->y + 5, top[a]->x + 3);
-            addch('T');
+
+        move(top[a]->y + 5, top[a]->x + 3);
+        addch('T');
     }
     move(h - 1, 0);
     clrtoeol();
-    mvprintw(h - 1, 0, "Status: Simulation's done, top cells are shown. press any key to close.");
+    mvprintw(h - 1, 0, "Status: Top cells are shown. Press any key to show best taxis.");
     refresh();
-
     getch();
+
+    for (b = 0; b < getMap()->SO_HEIGHT + 2; b++)
+    {
+        move(b + 4, 0);
+        clrtoeol();
+    }
+    move(h - 1, 0);
+    clrtoeol();
+    mvprintw(h - 1, 0, "Status: Taxis score are shown. Press any key to close Taxicab.");
+
+    mvprintw(5, 2, "The taxi who has run the longest distance:");
+    mvprintw(6, 2, "Taxi PID:%d, gone throught %d cells.", cellsMax->processid, cellsMax->distanceDone);
+    mvprintw(8, 2, "The taxi who has done the longest travel:");
+    mvprintw(9, 2, "Taxi PID:%d, has done a travel in %ld nanosec.", timeMax->processid, timeMax->maxTime);
+    mvprintw(11, 2, "The taxi who took most requests:");
+    mvprintw(12, 2, "Taxi PID:%d, took %d requests.", reqMax->processid, reqMax->requestsTaken);
+    
+    refresh();
+    getch();
+
     shmctl(shmID, IPC_RMID, NULL);
     endwin();
 }
@@ -786,7 +856,7 @@ int main(int argc, char *argv[])
     cbreak();
     noecho();
     keypad(stdscr, TRUE);
-    /* nodelay(stdscr, TRUE); */
+    nodelay(stdscr, TRUE);
 
     getmaxyx(stdscr, h, w);
     win = newwin(h, w, 0, 0);

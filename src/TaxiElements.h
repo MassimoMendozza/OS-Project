@@ -25,7 +25,7 @@ typedef struct _taxi  /*oggetto taxi*/
 	int processid;
 	int number;
 	long maxTime;
-	int distanceDone, ridesDone;
+	int requestsTaken, distanceDone;
 } taxi;
 
 typedef struct _mapCell  /*oggetto mappa della città*/

@@ -77,7 +77,7 @@ int main(int argc, char *argv[])
     myself->processid = getpid();
     myself->number = myNumber;
     myself->distanceDone = 0;
-    myself->ridesDone = 0;
+    myself->requestsTaken = 0;
     myself->posX = -1;
     myself->posY = -1;
 
@@ -191,12 +191,12 @@ void moveMyselfIn(int destX, int destY)
     }
     if ((myself->posX == destX) && (myself->posY == destY))
     {
-
         alarm(getMap()->SO_TIMEOUT);
     }
 
     struct timespec request = {0, getMapCellAt(destX, destY)->holdingTime};
     struct timespec remaining;
+        tempTime=tempTime+getMapCellAt(destX, destY)->holdingTime;
     nanosleep(&request, &remaining);
 };
 
@@ -271,6 +271,7 @@ void taxiKickoff()
     /*Taxi si mette in attesa di richieste*/
     while (keepOn)
     {
+        tempTime = 0;
         sourceX = sourceY = destX = destY = -1;
         message requestPlaceholder;
         if (msgrcv(msgIDClientCall, &requestPlaceholder, sizeof(message), 0, 0) == -1)
@@ -279,7 +280,6 @@ void taxiKickoff()
             fprintf(errorLog, "taxi:%d\tx:%d\ty:%d rcvclicall %s\n", myTaxiNumber, myself->posX, myself->posY, strerror(errno));
             fflush(errorLog);
         };
-        tempTime = 0;
         sourceX = getPerson(requestPlaceholder.clientID)->posX;
         sourceY = getPerson(requestPlaceholder.clientID)->posY;
         destX = requestPlaceholder.x;
@@ -293,8 +293,14 @@ void taxiKickoff()
             fprintf(errorLog, "taxi:%d\tx:%d\ty:%d sndclitak %s\n", myTaxiNumber, sourceX, sourceY, strerror(errno));
             fflush(errorLog);
         };
+        myself->requestsTaken++;
 
         driveTaxi(sourceX, sourceY);
+        if (myself->maxTime < tempTime)
+        {
+            myself->maxTime = tempTime;
+        }
+        tempTime = 0;
         requestPlaceholder.mtype = 1;
         if (msgsnd(msgIDRequestBegin, &requestPlaceholder, sizeof(message), 0) == -1)
         {
@@ -317,6 +323,5 @@ void taxiKickoff()
         {
             myself->maxTime = tempTime;
         }
-        myself->ridesDone++;
     }
 }
