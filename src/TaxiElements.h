@@ -11,7 +11,7 @@
 
 typedef struct _person /*oggetto persona*/
 {
-	int processid;
+	pid_t processid;
 	int number;
 	int requestDone;
 	int posX;
@@ -22,7 +22,7 @@ typedef struct _taxi  /*oggetto taxi*/
 {
 	int posX;
 	int posY;
-	int processid;
+	pid_t processid;
 	int number;
 	long maxTime;
 	int requestsTaken, distanceDone;

@@ -41,6 +41,7 @@ void signalHandler(int sigNumber)
     case SIGUSR1:
         goOn = 0;
         break;
+    case SIGTERM:
     case SIGALRM:
         alarmCame = 1;
         break;
@@ -56,6 +57,7 @@ int main(int argc, char *argv[])
     act.sa_handler = signalHandler;
     sigaction(SIGUSR1, &act, 0);
     sigaction(SIGALRM, &act, 0);
+    sigaction(SIGTERM, &act, 0);
 
     errorLog = fopen("errorLog.txt", "ab+");
 
@@ -82,6 +84,7 @@ int main(int argc, char *argv[])
     /*printf("Taxi n%d with pid %d\n", myNumber, getpid());*/
 
     myself = getTaxi(myNumber);
+    while(getpid()==0);
     myself->processid = getpid();
     myself->number = myNumber;
     myself->distanceDone = 0;
@@ -155,6 +158,7 @@ int main(int argc, char *argv[])
 
 void quitItAll()
 {
+    keepOn=0;
     message killNotification;
     killNotification.driverID = myTaxiNumber;
     killNotification.x =
@@ -164,8 +168,7 @@ void quitItAll()
     reserveSem(getMap()->cellsSemID, (myself->posX * getMap()->SO_HEIGHT) + myself->posY);
     getMapCellAt(myself->posX, myself->posY)->currentElements--;
     releaseSem(getMap()->cellsSemID, (myself->posX * getMap()->SO_HEIGHT) + myself->posY);
-    raise(SIGKILL);
-    exit(EXIT_FAILURE);
+    exit(EXIT_SUCCESS);
 }
 
 void moveMyselfIn(int destX, int destY)
@@ -268,7 +271,7 @@ void taxiKickoff()
     };
 
     /*Taxi si mette in attesa di richieste*/
-    while (keepOn)
+    while (keepOn&&!alarmCame)
     {
         if (alarmCame)
             quitItAll();
@@ -335,4 +338,6 @@ void taxiKickoff()
             myself->maxTime = tempTime;
         }
     }
+
+            quitItAll();
 }

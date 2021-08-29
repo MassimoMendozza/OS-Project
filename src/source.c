@@ -20,6 +20,7 @@ FILE *errorLog;
 int goOn;
 void signalHandler(int sigNum){
     switch(sigNum){
+        case SIGTERM:
         case SIGUSR1:
             goOn=0;
             break;
@@ -33,12 +34,12 @@ void signalHandler(int sigNum){
 int main(int argc, char *argv[])
 {
 
-
     struct sigaction act;
     memset (&act, 0, sizeof(act));
     act.sa_handler = signalHandler;
     sigaction(SIGUSR1, &act, 0);
     sigaction(SIGUSR2, &act, 0);
+    sigaction(SIGTERM, &act, 0);
 
     addRequest=1;
     srand(getpid() % time(NULL));
@@ -57,6 +58,7 @@ int main(int argc, char *argv[])
     setAddrstart(addrstart);
 
     myself = getPerson(myNumber);
+    while(getpid()==0);
     myself->processid = getpid();
     myself->number = myNumber;
     fp = fopen("movement.txt", "ab+");
@@ -103,15 +105,17 @@ int main(int argc, char *argv[])
 void clientKickoff()
 {
     message imHere;
+    goOn=1;
 
 
+    myself->processid = getpid();
 
     FILE *fp;
     fp = fopen("try.txt", "ab+");
     struct timespec request = {0, 50000000};
     struct timespec remaining;
 
-    while (1)
+    while (goOn)
     {
         nanosleep(&request, &remaining);
         for(counter=0;counter<addRequest; counter++){
@@ -148,4 +152,5 @@ void clientKickoff()
         addRequest=1;
 
     }
+    exit(EXIT_SUCCESS);
 }

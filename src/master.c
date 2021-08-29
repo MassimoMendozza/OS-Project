@@ -19,7 +19,7 @@
 #define CONFIGFULLPATH "./config"
 #endif
 
-#define ctrl(x)           ((x) & 0x1f)
+#define ctrl(x) ((x)&0x1f)
 
 /*
 Variables used to parse config file
@@ -342,11 +342,10 @@ void beFruitful() /*creation of processes like taxi and client*/
                                  msgReDoString,
                                  NULL};
             char *environ[] = {NULL};
-            if (execve("./bin/taxi", paramList, environ) == -1)
-            {
-                printf("%s", strerror(errno));
-            };
-            break;
+            while (execve("./bin/taxi", paramList, environ) != -1)
+                ;
+            printf("%s", strerror(errno));
+            exit(EXIT_FAILURE);
         }
     }
 
@@ -358,8 +357,12 @@ void beFruitful() /*creation of processes like taxi and client*/
 
             char *const paramList[] = {"./bin/source", numberString, shmString, msgClCaString, NULL};
             char *environ[] = {NULL};
-            execve("./bin/source", paramList, environ);
-            break;
+            while (execve("./bin/source", paramList, environ) != -1)
+                ;
+            fprintf(errorLog, "%s", strerror(errno));
+            fflush(errorLog);
+
+            exit(EXIT_FAILURE);
         }
     }
     bornAMaster();
@@ -460,8 +463,11 @@ void bornAMaster()
         }
     }
     updateMap = 0;
-    signal(SIGALRM, &alarmMaster);
-    signal(SIGINT, &alarmMaster);
+    struct sigaction act;
+    memset(&act, 0, sizeof(act));
+    act.sa_handler = alarmMaster;
+    sigaction(SIGALRM, &act, 0);
+    sigaction(SIGINT, &act, 0);
 
     activeTaxi = 0;
 
@@ -517,7 +523,8 @@ void bornAMaster()
     refresh();
     for (a = 0; a < map->SO_SOURCES; a++)
     {
-
+        while (getPerson(a)->processid == 0)
+            ;
         kill(getPerson(a)->processid, SIGUSR1);
         mvprintw(2, 2, "Kicked clients: %d/%d   ", a + 1, map->SO_SOURCES);
         refresh();
@@ -529,7 +536,7 @@ void bornAMaster()
 
     move(h - 1, 0);
     clrtoeol();
-    mvprintw(h - 1, 0, "Status: Simulation's going. CTRL+B to spam SO_SOURCES requests, successfuly spammed requests: %d.", spammedRequests);
+    mvprintw(h - 1, 0, "Status: Simulation's going. CTRL+B to spam SO_SOURCES requests, spammed requests: %d.", spammedRequests);
     refresh();
 
     move(2, 0);
@@ -570,7 +577,7 @@ void bornAMaster()
 
             move(h - 1, 0);
             clrtoeol();
-            mvprintw(h - 1, 0, "Status: Simulation's going. CTRL+B to spam SO_SOURCES requests, successfuly spammed requests: %d.", spammedRequests);
+            mvprintw(h - 1, 0, "Status: Simulation's going. CTRL+B to spam SO_SOURCES requests, spammed requests: %d.", spammedRequests);
             refresh();
         }
         if ((msgrcv(msgIDTaxiCell, &placeHolder, sizeof(message), 0, IPC_NOWAIT)) != -1)
@@ -581,7 +588,6 @@ void bornAMaster()
         if (msgrcv(msgIDTimeout, &placeHolder, sizeof(message), 0, IPC_NOWAIT) != -1)
         {
 
-            kill(getTaxi(placeHolder.driverID)->processid, SIGKILL);
             taxi *dead = malloc(sizeof(taxi));
             dead->distanceDone = getTaxi(placeHolder.driverID)->distanceDone;
             dead->number = getTaxi(placeHolder.driverID)->number;
@@ -591,6 +597,7 @@ void bornAMaster()
             dead->requestsTaken = getTaxi(placeHolder.driverID)->requestsTaken;
             addTaxi(deadTaxis, dead);
 
+            kill(getTaxi(placeHolder.driverID)->processid, SIGTERM);
             /* activeTaxi--; */
             move(2, 0);
             clrtoeol();
@@ -663,6 +670,7 @@ void bornAMaster()
         /* Checking if map is to update */
         if (updateMap)
         {
+
             int temptaxis;
             temptaxis = 0;
             for (a = 0; a < getMap()->SO_WIDTH; a++)
@@ -670,6 +678,7 @@ void bornAMaster()
                 for (b = 0; b < getMap()->SO_HEIGHT; b++)
                 {
                     move(b + 5, a + 3);
+
                     if (getMapCellAt(a, b)->maxElements == -1)
                     {
                         addch(ACS_CKBOARD);
@@ -693,18 +702,25 @@ void bornAMaster()
             refresh();
         }
     };
-    mvprintw(h - 1, 0, "Status: Simulation's done, removing ipc resources...");
+    move(h - 1, 0);
+    clrtoeol();
+    mvprintw(h - 1, 0, "Status: Simulation's done, sending SIGTERM to taxis and sources...");
+    refresh();
 
     for (a = 0; a < getMap()->SO_SOURCES; a++)
     {
-        kill(getPerson(a)->processid, SIGKILL);
+        kill(getPerson(a)->processid, SIGTERM);
         waitpid(getPerson(a)->processid, NULL, WNOHANG);
     }
     for (a = 0; a < getMap()->SO_TAXI; a++)
     {
-        kill(getTaxi(a)->processid, SIGKILL);
+        kill(getTaxi(a)->processid, SIGTERM);
         waitpid(getTaxi(a)->processid, NULL, WNOHANG);
     }
+    move(h - 1, 0);
+    clrtoeol();
+    mvprintw(h - 1, 0, "Status: Simulation's done, removing ipc resources...");
+    refresh();
     semctl(getMap()->cellsSemID, 1200, IPC_RMID);
     msgctl(msgIDKickoff, IPC_RMID, NULL);
     msgctl(msgIDTimeout, IPC_RMID, NULL);
@@ -744,6 +760,7 @@ void bornAMaster()
         }
     }
     activeTaxi = temptaxis;
+
     move(2, 0);
     clrtoeol();
     nodelay(stdscr, FALSE);
@@ -874,6 +891,21 @@ void bornAMaster()
     refresh();
     getch();
 
+    move(h - 1, 0);
+    clrtoeol();
+    mvprintw(h - 1, 0, "Status: Quitting. Deallocating shared memory and SIGKILLING processes to be sure...");
+    refresh();
+
+    for (a = 0; a < getMap()->SO_SOURCES; a++)
+    {
+        kill(getPerson(a)->processid, SIGKILL);
+        waitpid(getPerson(a)->processid, NULL, WNOHANG);
+    }
+    for (a = 0; a < getMap()->SO_TAXI; a++)
+    {
+        kill(getTaxi(a)->processid, SIGKILL);
+        waitpid(getTaxi(a)->processid, NULL, WNOHANG);
+    }
     shmctl(shmID, IPC_RMID, NULL);
     endwin();
 }
