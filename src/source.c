@@ -18,24 +18,32 @@ FILE *fp;
 FILE *errorLog;
 
 int goOn;
-void kickoffClientHandler(int a)
-{
-    goOn = 0;
-}
+void signalHandler(int sigNum){
+    switch(sigNum){
+        case SIGUSR1:
+            goOn=0;
+            break;
+        case SIGUSR2:
+            addRequest++;
+            break;
+    }
 
-void manualRequest(int a)
-{
-    addRequest++;
-    signal(SIGUSR2, &manualRequest);
 }
 
 int main(int argc, char *argv[])
 {
+
+
+    struct sigaction act;
+    memset (&act, 0, sizeof(act));
+    act.sa_handler = signalHandler;
+    sigaction(SIGUSR1, &act, 0);
+    sigaction(SIGUSR2, &act, 0);
+
     addRequest=1;
     srand(getpid() % time(NULL));
     errorLog = fopen("errorLog.txt", "ab+");
 
-    signal(SIGUSR1, &kickoffClientHandler);
 
     myNumber = atoi(argv[1]);
     shmID = atoi(argv[2]);
@@ -95,7 +103,8 @@ int main(int argc, char *argv[])
 void clientKickoff()
 {
     message imHere;
-    signal(SIGUSR2, &manualRequest);
+
+
 
     FILE *fp;
     fp = fopen("try.txt", "ab+");

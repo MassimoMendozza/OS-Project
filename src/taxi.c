@@ -27,28 +27,36 @@ long tempTime;
 int myTaxiNumber;
 int goOn;
 int keepOn;
-int alarmInsideSem;
+int alarmCame;
 taxi *myself;
 FILE *errorLog;
 
 int sourceX, sourceY, destX, destY;
 alarmInsideSem = 0;
 
-void cautiousHandler(int a)
+void signalHandler(int sigNumber)
 {
-    alarmInsideSem = 1;
-    signal(SIGALRM, &cautiousHandler);
+    switch (sigNumber)
+    {
+    case SIGUSR1:
+        goOn = 0;
+        break;
+    case SIGALRM:
+        alarmCame = 1;
+        break;
+    }
 }
-
-void kickoffHandler(int a)
-{
-    goOn = 0;
-
-    signal(SIGUSR1, &kickoffHandler);
-}
-
 int main(int argc, char *argv[])
 {
+
+    alarmCame = 0;
+
+    struct sigaction act;
+    memset(&act, 0, sizeof(act));
+    act.sa_handler = signalHandler;
+    sigaction(SIGUSR1, &act, 0);
+    sigaction(SIGALRM, &act, 0);
+
     errorLog = fopen("errorLog.txt", "ab+");
 
     myNumber = atoi(argv[1]);
@@ -80,8 +88,6 @@ int main(int argc, char *argv[])
     myself->requestsTaken = 0;
     myself->posX = -1;
     myself->posY = -1;
-
-    signal(SIGUSR1, &kickoffHandler);
 
     int found, x, y;
     found = 0;
@@ -147,9 +153,8 @@ int main(int argc, char *argv[])
     taxiKickoff();
 }
 
-static void alarmHandler(int signalNum)
+void quitItAll()
 {
-    keepOn = 0;
     message killNotification;
     killNotification.driverID = myTaxiNumber;
     killNotification.x =
@@ -168,8 +173,8 @@ void moveMyselfIn(int destX, int destY)
     int originX, originY;
     originX = myself->posX;
     originY = myself->posY;
-
-    signal(SIGALRM, &cautiousHandler);
+    if (alarmCame)
+        quitItAll();
     reserveSem(getMap()->cellsSemID, (destX * getMap()->SO_HEIGHT) + destY);
     reserveSem(getMap()->cellsSemID, (myself->posX * getMap()->SO_HEIGHT) + myself->posY);
     if (getMapCellAt(destX, destY)->maxElements > getMapCellAt(destX, destY)->currentElements)
@@ -184,11 +189,9 @@ void moveMyselfIn(int destX, int destY)
 
     releaseSem(getMap()->cellsSemID, (originX * getMap()->SO_HEIGHT) + originY);
     releaseSem(getMap()->cellsSemID, (destX * getMap()->SO_HEIGHT) + destY);
-    signal(SIGALRM, &alarmHandler);
-    if (alarmInsideSem)
-    {
-        raise(SIGALRM);
-    }
+
+    if (alarmCame)
+        quitItAll();
     if ((myself->posX == destX) && (myself->posY == destY))
     {
         alarm(getMap()->SO_TIMEOUT);
@@ -196,7 +199,7 @@ void moveMyselfIn(int destX, int destY)
 
     struct timespec request = {0, getMapCellAt(destX, destY)->holdingTime};
     struct timespec remaining;
-        tempTime=tempTime+getMapCellAt(destX, destY)->holdingTime;
+    tempTime = tempTime + getMapCellAt(destX, destY)->holdingTime;
     nanosleep(&request, &remaining);
 };
 
@@ -252,10 +255,6 @@ void taxiKickoff()
 {
     keepOn = 1;
 
-    if (signal(SIGALRM, &alarmHandler) == SIG_ERR)
-    {
-        printf("Something's wrong on signal handler change");
-    };
     message imHere;
     imHere.driverID = myself->number;
     imHere.x =
@@ -271,6 +270,8 @@ void taxiKickoff()
     /*Taxi si mette in attesa di richieste*/
     while (keepOn)
     {
+        if (alarmCame)
+            quitItAll();
         tempTime = 0;
         sourceX = sourceY = destX = destY = -1;
         message requestPlaceholder;
@@ -280,6 +281,8 @@ void taxiKickoff()
             fprintf(errorLog, "taxi:%d\tx:%d\ty:%d rcvclicall %s\n", myTaxiNumber, myself->posX, myself->posY, strerror(errno));
             fflush(errorLog);
         };
+        if (alarmCame)
+            quitItAll();
         sourceX = getPerson(requestPlaceholder.clientID)->posX;
         sourceY = getPerson(requestPlaceholder.clientID)->posY;
         destX = requestPlaceholder.x;
@@ -295,7 +298,11 @@ void taxiKickoff()
         };
         myself->requestsTaken++;
 
+        if (alarmCame)
+            quitItAll();
         driveTaxi(sourceX, sourceY);
+        if (alarmCame)
+            quitItAll();
         if (myself->maxTime < tempTime)
         {
             myself->maxTime = tempTime;
@@ -309,7 +316,11 @@ void taxiKickoff()
             fflush(errorLog);
         };
 
+        if (alarmCame)
+            quitItAll();
         driveTaxi(destX, destY);
+        if (alarmCame)
+            quitItAll();
         alarm(getMap()->SO_TIMEOUT);
 
         requestPlaceholder.mtype = 1;

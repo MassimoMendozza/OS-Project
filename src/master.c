@@ -19,6 +19,8 @@
 #define CONFIGFULLPATH "./config"
 #endif
 
+#define ctrl(x)           ((x) & 0x1f)
+
 /*
 Variables used to parse config file
 */
