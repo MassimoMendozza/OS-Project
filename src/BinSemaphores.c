@@ -1,11 +1,7 @@
 #include <sys/sem.h>
 
 /*
-semun:
-	val -> value for SETVAL
-	buf -> buffer for IPC_STAT, IPC_SET
-	array -> array for GETALL, SETALL
-	__buf -> buffer fot IPC_INFO
+Utils funciton to release and reserve bin semaphores
 */
 
 union semun
@@ -17,20 +13,6 @@ union semun
 	struct seminfo *__buf;
 	#endif
 };
-
-int initSemAvailable(int semId, int semNum)
-{
-	union semun arg;
-	arg.val = 1;
-	return semctl(semId, semNum, SETVAL, arg);
-}
-
-int initSemInUse(int semId, int semNum)
-{
-	union semun arg;
-	arg.val = 0;
-	return semctl(semId, semNum, SETVAL, arg);
-}
 
 int reserveSem(int semId, int semNum)
 {

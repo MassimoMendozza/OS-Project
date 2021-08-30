@@ -3,6 +3,10 @@
 #include <malloc.h>
 #include "TaxiElements.h"
 
+/*
+Taxi node to easily store dead taxis through node
+*/
+
 typedef struct _node  Node;
 typedef struct _node
 {

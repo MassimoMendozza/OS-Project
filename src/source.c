@@ -14,42 +14,49 @@
 int myNumber, shmID, msgIDClientCall, addRequest, counter;
 person *myself;
 
-FILE *fp;
 FILE *errorLog;
 
 int goOn;
-void signalHandler(int sigNum){
-    switch(sigNum){
-        case SIGTERM:
-        case SIGUSR1:
-            goOn=0;
-            break;
-        case SIGUSR2:
-            addRequest++;
-            break;
-    }
 
+/*
+The signal handler
+*/
+void signalHandler(int sigNum)
+{
+    switch (sigNum)
+    {
+    case SIGTERM:
+    case SIGUSR1:
+        goOn = 0;
+        break;
+    case SIGUSR2:
+        addRequest++;
+        break;
+    }
 }
 
 int main(int argc, char *argv[])
 {
 
+    /*
+    Setting up the signal handler
+    */
     struct sigaction act;
-    memset (&act, 0, sizeof(act));
+    memset(&act, 0, sizeof(act));
     act.sa_handler = signalHandler;
     sigaction(SIGUSR1, &act, 0);
     sigaction(SIGUSR2, &act, 0);
     sigaction(SIGTERM, &act, 0);
 
-    addRequest=1;
+    addRequest = 1;
     srand(getpid() % time(NULL));
     errorLog = fopen("errorLog.txt", "ab+");
-
-
     myNumber = atoi(argv[1]);
     shmID = atoi(argv[2]);
-    msgIDClientCall = atoi(argv[3]);
 
+    /*
+    Getting and setting base address for shmUtils
+    */
     void *addrstart = shmat(shmID, NULL, 0);
     if (addrstart == -1)
     {
@@ -57,16 +64,21 @@ int main(int argc, char *argv[])
     }
     setAddrstart(addrstart);
 
+    /*
+    Putting its information in shm and getting msg queue id
+    */
+    msgIDClientCall = getMap()->msgIDClientCall;
     myself = getPerson(myNumber);
-    while(getpid()==0);
+    while (getpid() == 0)
+        ;
     myself->processid = getpid();
     myself->number = myNumber;
-    fp = fopen("movement.txt", "ab+");
-
-    myNumber = myNumber;
 
     message msgPlaceholder;
 
+    /*
+    Searching a place to put myself in
+    */
     int found, x, y;
     found = 0;
     for (x = rand() % getMap()->SO_WIDTH; x < getMap()->SO_WIDTH && !found; x++)
@@ -87,6 +99,9 @@ int main(int argc, char *argv[])
         }
     }
 
+    /*
+    Waiting for SIGUSR1 to kickoff simulation
+    */
     struct timespec request = {0, 1000000};
     struct timespec remaining;
     goOn = 1;
@@ -95,62 +110,64 @@ int main(int argc, char *argv[])
         nanosleep(&request, &remaining);
     }
 
-    clientKickoff();
-
     /*
-        Waiting the simulation kickoff
+        Simulation goes on
     */
+    clientKickoff();
 }
 
 void clientKickoff()
 {
     message imHere;
-    goOn=1;
-
+    goOn = 1;
 
     myself->processid = getpid();
 
-    FILE *fp;
-    fp = fopen("try.txt", "ab+");
     struct timespec request = {0, 50000000};
     struct timespec remaining;
 
     while (goOn)
     {
         nanosleep(&request, &remaining);
-        for(counter=0;counter<addRequest; counter++){
-
-        int x, y, found;
-        found = 0;
-
-        for (x = rand() % getMap()->SO_WIDTH; x < getMap()->SO_WIDTH && !found; x++)
+        for (counter = 0; counter < addRequest; counter++)
         {
-            for (y = rand() % getMap()->SO_HEIGHT; y < getMap()->SO_HEIGHT && !found; y++)
+
+            int x, y, found;
+            found = 0;
+
+            /*
+            Searching destination
+            */
+            for (x = rand() % getMap()->SO_WIDTH; x < getMap()->SO_WIDTH && !found; x++)
             {
-                if (getMapCellAt(x, y)->maxElements > -1)
+                for (y = rand() % getMap()->SO_HEIGHT; y < getMap()->SO_HEIGHT && !found; y++)
                 {
-                    myself->posX = x;
-                    myself->posY = y;
-                    found = 1;
+                    if (getMapCellAt(x, y)->maxElements > -1)
+                    {
+                        myself->posX = x;
+                        myself->posY = y;
+                        found = 1;
+                    }
+                }
+                if ((x == getMap()->SO_WIDTH - 1) && (y == getMap()->SO_HEIGHT))
+                {
+                    x = y = found = 0;
                 }
             }
-            if ((x == getMap()->SO_WIDTH - 1) && (y == getMap()->SO_HEIGHT))
+
+            imHere.clientID = myNumber;
+            imHere.x = x;
+            imHere.y = y;
+            if (msgsnd(msgIDClientCall, &imHere, sizeof(message), 0) == -1)
             {
-                x = y = found = 0;
+                fprintf(errorLog, "source:%d\tx:%d\ty:%d msgsndclientcall %s\n", myNumber, myself->posX, myself->posY, strerror(errno));
+                fflush(errorLog);
             }
         }
-
-        imHere.clientID = myNumber;
-        imHere.x = x;
-        imHere.y = y;
-        if (msgsnd(msgIDClientCall, &imHere, sizeof(message), 0) == -1)
-        {
-            fprintf(errorLog, "source:%d\tx:%d\ty:%d msgsndclientcall %s\n", myNumber, myself->posX, myself->posY, strerror(errno));
-            fflush(errorLog);
-        }
-        }
-        addRequest=1;
-
+        /*
+        Resetting manual request (from SIGUSR2) counter
+        */
+        addRequest = 1;
     }
     exit(EXIT_SUCCESS);
 }

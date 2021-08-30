@@ -5,8 +5,7 @@
 #include <ncurses.h>
 #include <unistd.h>
 #include <sys/msg.h>
-
-#include <semaphore.h>
+#include <sys/sem.h>
 
 #include <sys/shm.h>
 #include <errno.h>
@@ -19,7 +18,16 @@
 #define CONFIGFULLPATH "./config"
 #endif
 
+#ifndef _GRID_WIDTH
+#define _GRID_WIDTH 60
+#endif
+
+#ifndef _GRID_HEIGHT
+#define _GRID_HEIGHT 20
+#endif
+
 #define ctrl(x) ((x)&0x1f)
+#define MSG_STAT 11
 
 /*
 Variables used to parse config file
@@ -30,9 +38,16 @@ FILE *errorLog;
 char AttributeName[20];
 char EqualsPlaceHolder;
 int ParsedValue;
+
+/* 
+Flags for the simulation
+*/
 int updateMap;
 int keepOn;
 
+/* 
+Keys and ids for the ipc elements
+*/
 key_t ipcKey;
 key_t ipcKeyKickoff;
 key_t ipcKeyTimeout;
@@ -41,12 +56,7 @@ key_t ipcKeyClientCall;
 key_t ipcKeyClientTaken;
 key_t ipcKeyRequestBegin;
 key_t ipcKeyRequestDone;
-
-int projID;
-
-masterMap *map;
-taxiNode *deadTaxis;
-int shmID, activeTaxi, updatedmap,
+int shmID, activeTaxi,
     msgIDKickoff,
     msgIDTimeout,
     msgIDTaxiCell,
@@ -54,26 +64,39 @@ int shmID, activeTaxi, updatedmap,
     msgIDClientTaken,
     msgIDRequestBegin,
     msgIDRequestDone;
-updatedmap = 0;
-void *addrstart; /*the addres of the shared memory portion (first element is map)*/
+int projID;
 
+/* 
+Simulation utils
+*/
+masterMap *map;
+taxiNode *deadTaxis;
+
+/* 
+ncurses utils
+*/
 WINDOW *win;
 int h, w, a;
 
+/* 
+Alarm handler
+*/
 void alarmMaster(int sig)
 {
     keepOn = 0;
 }
 
 /*
-Simulation parameter
+Util to use range with rand
 */
-
 int randFromRange(int min, int max)
 {
     return rand() % (max + 1 - min) + min;
 }
 
+/*
+Reads map parameters from file
+*/
 masterMap *readConfig(char *configPath)
 {
     /*
@@ -91,14 +114,13 @@ masterMap *readConfig(char *configPath)
     newMap->SO_TIMENSEC_MAX = -1;
     newMap->SO_TIMEOUT = -1;
     newMap->SO_DURATION = -1;
-    newMap->SO_HEIGHT = -1;
-    newMap->SO_WIDTH = -1;
+    newMap->SO_HEIGHT = _GRID_HEIGHT;
+    newMap->SO_WIDTH = _GRID_WIDTH;
 
-    /*printf("\033[H\033[J");
-    printf("Reading config file from %s...\n\n", configPath);*/
     if ((config = (FILE *)fopen(configPath, "r")) == NULL)
     {
-        printf("Config file not found.\nMaster process will now exit.\n");
+        endwin();
+        fprintf(stdout, "Config file not found.\nMaster process will now exit.\n");
         exit(1);
     }
 
@@ -146,30 +168,36 @@ masterMap *readConfig(char *configPath)
             {
                 newMap->SO_DURATION = ParsedValue;
             }
-            else if (strcmp(AttributeName, "SO_HEIGHT") == 0)
-            {
-                newMap->SO_HEIGHT = ParsedValue;
-            }
-            else if (strcmp(AttributeName, "SO_WIDTH") == 0)
-            {
-                newMap->SO_WIDTH = ParsedValue;
-            }
             else
             {
-                printf("Unexpected attribute in config file on \" %s %c %d \".\nMaster process will now exit.\n", AttributeName, EqualsPlaceHolder, ParsedValue);
+                endwin();
+                fprintf(stdout, "Unexpected attribute in config file on \" %s %c %d \".\nMaster process will now exit.\n", AttributeName, EqualsPlaceHolder, ParsedValue);
                 exit(1);
             }
         }
         else
         {
-            printf("Failed to parse config file with \" %s %c %d \".\nMaster process will now exit.\n", AttributeName, EqualsPlaceHolder, ParsedValue);
+            endwin();
+            fprintf(stdout, "Failed to parse config file with \" %s %c %d \".\nMaster process will now exit.\n", AttributeName, EqualsPlaceHolder, ParsedValue);
             exit(1);
         }
     }
 
     if ((newMap->SO_HEIGHT == -1) || (newMap->SO_WIDTH == -1) || (newMap->SO_HOLES == -1) || (newMap->SO_TOP_CELLS == -1) || (newMap->SO_CAP_MIN == -1) || (newMap->SO_CAP_MAX == -1) || (newMap->SO_TAXI == -1) || (newMap->SO_TIMENSEC_MIN == -1) || (newMap->SO_TIMENSEC_MAX == -1) || (newMap->SO_TIMEOUT == -1) || (newMap->SO_DURATION == -1) || (newMap->SO_SOURCES == -1))
     {
-        printf("Not all parameters have been initialized, check your config file and try again.\nMaster process will now exit.\n");
+        endwin();
+        fprintf(stdout, "Not all parameters have been initialized, check your config file and try again.\nMaster process will now exit.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if (
+        ((newMap->SO_HOLES > (newMap->SO_HEIGHT * newMap->SO_WIDTH))) ||
+        (((newMap->SO_TAXI) > ((newMap->SO_HEIGHT * newMap->SO_WIDTH) - newMap->SO_HOLES))) ||
+        (((newMap->SO_SOURCES) > ((newMap->SO_HEIGHT * newMap->SO_WIDTH) - newMap->SO_HOLES))) ||
+        (newMap->SO_TOP_CELLS > ((newMap->SO_HEIGHT * newMap->SO_WIDTH) - newMap->SO_HOLES)))
+    {
+        endwin();
+        fprintf(stdout, "Something's wrong with simulation's number, check them.\nMaster process will now exit.\n");
         exit(EXIT_FAILURE);
     }
 
@@ -180,13 +208,16 @@ masterMap *readConfig(char *configPath)
     return newMap;
 }
 
+/* 
+Initializes map's cell
+*/
+
 void initializeMapCells()
 {
     int x, y;
-    masterMap *map = addrstart;
+    masterMap *map = getMap();
     mapCell *cells;
     map->cellsSemID = semget(ipcKey, map->SO_HEIGHT * map->SO_WIDTH, IPC_CREAT | 0666); /*initialization of the semaphores array*/
-    initSemAvailable(map->cellsSemID, map->SO_HEIGHT * map->SO_WIDTH);
     union semun arg;
     arg.val = 1;
     for (a = 0; a < (map->SO_HEIGHT * map->SO_WIDTH); a++) /*setting the array*/
@@ -209,22 +240,7 @@ void initializeMapCells()
 }
 
 /*
-    createHoles
-    Takes random x and y and checks if the cell [x][y] is eligible for a hole.
-    If not we scan the matrix linearly in search of the first eligible cell.
-    Then we get back and make the whole 3x3 area around the hole ineligible to get a hole.
-
-    The mechanism for linear scan is:
-        first we put as limit the end of the matrix
-        then we scan:
-            if we find a cell then we put the current indexes as the limits
-            to get out of the three cycles and then we make x and y the top left corner
-            of the new [a][b] cell's area
-            if we do not find the cell from [x][y] to the end of the matrix we'll end up likely
-            with a == SO_WIDTH, a sort of checkpoint that indicates that we reached the end of 
-            the two cycles, at this point we need to check the part of the matrix before [x][y].
-            We put a and b to 0 and put the limit as the original x and y, now we must find the 
-            eligible cell, if not the configuration cannot go ahead and we should retry from the beginning;
+Creates random holes in the map
 */
 
 void createHoles()
@@ -272,57 +288,44 @@ void createHoles()
     }
 }
 
-masterMap *mapFromConfig(char *configPath)
+/*
+Puts the map in shared memory with the config passed by argument and initializes
+it and it's message queues
+*/
+void mapFromConfig(char *configPath)
 {
     masterMap *map = readConfig(configPath);
 
     shmID = allocateShm(ipcKey, map);
 
-    msgIDKickoff = msgget(ipcKeyKickoff, IPC_CREAT | 0666);
-    msgIDTimeout = msgget(ipcKeyTimeout, IPC_CREAT | 0666);
-    msgIDTaxiCell = msgget(ipcKeyTaxiCell, IPC_CREAT | 0666);
-    msgIDClientCall = msgget(ipcKeyClientCall, IPC_CREAT | 0666);
-    msgIDClientTaken = msgget(ipcKeyClientTaken, IPC_CREAT | 0666);
-    msgIDRequestBegin = msgget(ipcKeyRequestBegin, IPC_CREAT | 0666);
-    msgIDRequestDone = msgget(ipcKeyRequestDone, IPC_CREAT | 0666);
-
-    addrstart = shmat(shmID, NULL, 0); /*return the addres of the shared memory portion*/
-
-    setAddrstart(addrstart); /*setting the parameter for the address of sh. memo.*/
-    putMapInShm(map);        /*copy in the sh. memo. the parameters of the map*/
+    setAddrstart(shmat(shmID, NULL, 0));
+    putMapInShm(map);
 
     initializeMapCells();
     createHoles();
 
-    return map;
+    getMap()->msgIDKickoff = msgIDKickoff = msgget(ipcKeyKickoff, IPC_CREAT | 0666);
+    getMap()->msgIDTimeout = msgIDTimeout = msgget(ipcKeyTimeout, IPC_CREAT | 0666);
+    getMap()->msgIDTaxiCell = msgIDTaxiCell = msgget(ipcKeyTaxiCell, IPC_CREAT | 0666);
+    getMap()->msgIDClientCall = msgIDClientCall = msgget(ipcKeyClientCall, IPC_CREAT | 0666);
+    getMap()->msgIDClientTaken = msgIDClientTaken = msgget(ipcKeyClientTaken, IPC_CREAT | 0666);
+    getMap()->msgIDRequestBegin = msgIDRequestBegin = msgget(ipcKeyRequestBegin, IPC_CREAT | 0666);
+    getMap()->msgIDRequestDone = msgIDRequestDone = msgget(ipcKeyRequestDone, IPC_CREAT | 0666);
 }
 
-void beFruitful() /*creation of processes like taxi and client*/
+/* 
+Executes all the taxi and client processes
+*/
+void beFruitful()
 {
-    int a, shouldIBeATaxi, shouldIBeAClient;
     masterMap *map;
 
     map = getMap();
 
     char numberString[10];
     char shmString[10];
-    char msgKickString[10];
-    char msgTimeString[10];
-    char msgTaCeString[10];
-    char msgClCaString[10];
-    char msgClTaString[10];
-    char msgReBeString[10];
-    char msgReDoString[10];
     sprintf(shmString, "%d", shmID);
-    sprintf(msgKickString, "%d", msgIDKickoff);
-    sprintf(msgTimeString, "%d", msgIDTimeout);
-    sprintf(msgTaCeString, "%d", msgIDTaxiCell);
-    sprintf(msgClCaString, "%d", msgIDClientCall);
-    sprintf(msgClTaString, "%d", msgIDClientTaken);
-    sprintf(msgReBeString, "%d", msgIDRequestBegin);
-    sprintf(msgReDoString, "%d", msgIDRequestDone);
 
-    shouldIBeATaxi = shouldIBeAClient = 0;
     for (a = 0; a < map->SO_TAXI; a++)
     {
         if (fork() == 0)
@@ -333,18 +336,13 @@ void beFruitful() /*creation of processes like taxi and client*/
             char *paramList[] = {"./bin/taxi",
                                  numberString,
                                  shmString,
-                                 msgKickString,
-                                 msgTimeString,
-                                 msgTaCeString,
-                                 msgClCaString,
-                                 msgClTaString,
-                                 msgReBeString,
-                                 msgReDoString,
                                  NULL};
+
             char *environ[] = {NULL};
             while (execve("./bin/taxi", paramList, environ) != -1)
                 ;
-            printf("%s", strerror(errno));
+            fprintf(errorLog, "forking taxi n%d %s", a, strerror(errno));
+            fflush(errorLog);
             exit(EXIT_FAILURE);
         }
     }
@@ -355,11 +353,11 @@ void beFruitful() /*creation of processes like taxi and client*/
         {
             sprintf(numberString, "%d", a);
 
-            char *const paramList[] = {"./bin/source", numberString, shmString, msgClCaString, NULL};
+            char *const paramList[] = {"./bin/source", numberString, shmString, NULL};
             char *environ[] = {NULL};
             while (execve("./bin/source", paramList, environ) != -1)
                 ;
-            fprintf(errorLog, "%s", strerror(errno));
+            fprintf(errorLog, "forking client n%d %s", a, strerror(errno));
             fflush(errorLog);
 
             exit(EXIT_FAILURE);
@@ -368,13 +366,21 @@ void beFruitful() /*creation of processes like taxi and client*/
     bornAMaster();
 }
 
+/*
+Master function to monitor the simulation
+*/
 void bornAMaster()
 {
+    /*
+    Initializes flag and dead taxis list
+    */
+    masterMap *map = getMap();
     deadTaxis = creator();
     keepOn = 1;
-    wmove(win, 0, 0);
     getMap()->masterProcessID = getpid();
-
+    /*
+    Prints titlebar and map's border
+    */
     for (a = 0; a < w; a++)
         addch(ACS_BULLET);
     move(0, (w / 2) - 5);
@@ -422,7 +428,9 @@ void bornAMaster()
     refresh();
     int a, b;
     message placeHolder;
-
+    /*
+    Waits for taxis to fill the map
+    */
     a = 0;
     while (a < getMap()->SO_TAXI)
     {
@@ -439,7 +447,9 @@ void bornAMaster()
             refresh();
         }
     }
-
+    /*
+    Prints map's cell's state
+    */
     for (a = 0; a < getMap()->SO_WIDTH; a++)
     {
         for (b = 0; b < getMap()->SO_HEIGHT; b++)
@@ -463,6 +473,10 @@ void bornAMaster()
         }
     }
     updateMap = 0;
+
+    /*
+    Sets the signal handler for stopping simulation if alarm or SIGINT come
+    */
     struct sigaction act;
     memset(&act, 0, sizeof(act));
     act.sa_handler = alarmMaster;
@@ -478,6 +492,10 @@ void bornAMaster()
 
     move(2, 0);
     clrtoeol();
+
+    /*
+    Kicks the taxi through SIGUSR1
+    */
     for (a = 0; a < map->SO_TAXI; a++)
     {
         kill(getTaxi(a)->processid, SIGUSR1);
@@ -485,7 +503,6 @@ void bornAMaster()
         if (msgrcv(msgIDKickoff, &placeHolder, sizeof(message), 0, IPC_NOWAIT) != -1)
         {
             activeTaxi++;
-            /*printf("Taxi n%d posizionato in x:%d, y:%d, cella a %d/%d\n", placeHolder.driverID, placeHolder.sourceX, placeHolder.sourceY, getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->currentElements, getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->maxElements);*/
         }
         mvprintw(2, 2, "Kicking the taxi... %d/%d", a + 1, map->SO_TAXI);
         refresh();
@@ -498,7 +515,9 @@ void bornAMaster()
 
     move(2, 0);
     clrtoeol();
-
+    /*
+    Waiting for taxis to send alive messages 
+    */
     while (activeTaxi < map->SO_TAXI)
     {
         if (msgrcv(msgIDKickoff, &placeHolder, sizeof(message), 0, IPC_NOWAIT) != -1)
@@ -506,7 +525,6 @@ void bornAMaster()
             activeTaxi++;
             mvprintw(2, 2, "Taxi alive: %d/%d   ", activeTaxi, map->SO_TAXI);
             refresh();
-            /*printf("Taxi n%d posizionato in x:%d, y:%d, cella a %d/%d\n", placeHolder.driverID, placeHolder.sourceX, placeHolder.sourceY, getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->currentElements, getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->maxElements);*/
         }
     }
 
@@ -519,8 +537,12 @@ void bornAMaster()
 
     move(2, 0);
     clrtoeol();
-    mvprintw(2, 2, "Kicked clients: %d/%d   ", a + 1, map->SO_SOURCES);
+    mvprintw(2, 2, "Kicked clients: %d/%d   ", a, map->SO_SOURCES);
     refresh();
+
+    /*
+    Kicking users through SIGUSR1
+    */
     for (a = 0; a < map->SO_SOURCES; a++)
     {
         while (getPerson(a)->processid == 0)
@@ -529,7 +551,6 @@ void bornAMaster()
         mvprintw(2, 2, "Kicked clients: %d/%d   ", a + 1, map->SO_SOURCES);
         refresh();
     }
-    alarm(getMap()->SO_DURATION);
 
     int requestTaken, requestBegin, requestDone, requestAborted, resurrectedTaxi, spammedRequests;
     requestBegin = requestDone = requestTaken = requestAborted = resurrectedTaxi = 0;
@@ -544,31 +565,29 @@ void bornAMaster()
     mvprintw(2, 2, "Active taxis: %d/%d   ", activeTaxi, map->SO_TAXI);
     refresh();
 
+    /*
+    Preparing those for execv
+    */
     char numberString[10];
     char shmString[10];
-    char msgKickString[10];
-    char msgTimeString[10];
-    char msgTaCeString[10];
-    char msgClCaString[10];
-    char msgClTaString[10];
-    char msgReBeString[10];
-    char msgReDoString[10];
     sprintf(shmString, "%d", shmID);
-    sprintf(msgKickString, "%d", msgIDKickoff);
-    sprintf(msgTimeString, "%d", msgIDTimeout);
-    sprintf(msgTaCeString, "%d", msgIDTaxiCell);
-    sprintf(msgClCaString, "%d", msgIDClientCall);
-    sprintf(msgClTaString, "%d", msgIDClientTaken);
-    sprintf(msgReBeString, "%d", msgIDRequestBegin);
-    sprintf(msgReDoString, "%d", msgIDRequestDone);
 
+    /*
+    The simulation starts and so does the alarm
+    */
+    alarm(getMap()->SO_DURATION);
     while (keepOn)
     {
-        message placeHolder;
+        /*
+        Checking if CTRL+B is pressed
+        */
         if (getch() == ctrl('b'))
         {
             for (a = 0; a < getMap()->SO_SOURCES; a++)
             {
+                /*
+                Spamming requests
+                */
                 if (kill(getPerson(a)->processid, SIGUSR2) != -1)
                 {
                     spammedRequests++;
@@ -580,14 +599,23 @@ void bornAMaster()
             mvprintw(h - 1, 0, "Status: Simulation's going. CTRL+B to spam SO_SOURCES requests, spammed requests: %d.", spammedRequests);
             refresh();
         }
+        /*
+        Checking if new taxis took position
+        */
         if ((msgrcv(msgIDTaxiCell, &placeHolder, sizeof(message), 0, IPC_NOWAIT)) != -1)
         {
             kill(getTaxi(placeHolder.driverID)->processid, SIGUSR1);
             resurrectedTaxi++;
-        } /* checking if someone's killed itself*/
+        }
+        /*
+        Checking if some taxi has gone timeout
+        */
         if (msgrcv(msgIDTimeout, &placeHolder, sizeof(message), 0, IPC_NOWAIT) != -1)
         {
 
+            /*
+            Putting the dead taxi inside the list
+            */
             taxi *dead = malloc(sizeof(taxi));
             dead->distanceDone = getTaxi(placeHolder.driverID)->distanceDone;
             dead->number = getTaxi(placeHolder.driverID)->number;
@@ -597,14 +625,27 @@ void bornAMaster()
             dead->requestsTaken = getTaxi(placeHolder.driverID)->requestsTaken;
             addTaxi(deadTaxis, dead);
 
+            /*
+            Sending SIGTERM to taxi to gently terminate them in case
+            they aren't already terminated
+            */
             kill(getTaxi(placeHolder.driverID)->processid, SIGTERM);
-            /* activeTaxi--; */
+            activeTaxi--;
             move(2, 0);
             clrtoeol();
+            /*
+            if x==-1 taxi is dead during request
+            */
+            if (placeHolder.x == -1)
+            {
 
-            requestAborted++;
+                requestAborted++;
+            }
             mvprintw(2, 2, "Active taxis: %d/%d\t Resurrected taxis:%d", activeTaxi, map->SO_TAXI, resurrectedTaxi);
 
+            /*
+            Executing new taxi with the dead number
+            */
             int pid = fork();
             if (pid == 0)
             {
@@ -614,13 +655,6 @@ void bornAMaster()
                 char *paramList[] = {"./bin/taxi",
                                      numberString,
                                      shmString,
-                                     msgKickString,
-                                     msgTimeString,
-                                     msgTaCeString,
-                                     msgClCaString,
-                                     msgClTaString,
-                                     msgReBeString,
-                                     msgReDoString,
                                      NULL};
                 char *environ[] = {NULL};
                 if (execve("./bin/taxi", paramList, environ) == -1)
@@ -628,18 +662,24 @@ void bornAMaster()
                     printf("%s", strerror(errno));
                 };
                 refresh();
-                /*printf("Taxi n%d suicidato\n", placeHolder.driverID);*/
             }
         }
+
+        /*
+        Checking if new taxis are active
+        */
         if (msgrcv(msgIDKickoff, &placeHolder, sizeof(message), 0, IPC_NOWAIT) != -1)
         {
-            /*activeTaxi++;  */
+            activeTaxi++;
             move(2, 0);
             clrtoeol();
             mvprintw(2, 2, "Active taxis: %d/%d\t Resurrected taxis:%d", activeTaxi, map->SO_TAXI, resurrectedTaxi);
             refresh();
             /*printf("Taxi n%d posizionato in x:%d, y:%d, cella a %d/%d\n", placeHolder.driverID, placeHolder.sourceX, placeHolder.sourceY, getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->currentElements, getMapCellAt(placeHolder.sourceX, placeHolder.sourceY)->maxElements);*/
         }
+        /*
+        Checking if some taxi took some client's request
+        */
         if (msgrcv(msgIDClientTaken, &placeHolder, sizeof(message), 0, IPC_NOWAIT) != -1)
         {
             requestTaken++;
@@ -649,6 +689,9 @@ void bornAMaster()
             mvprintw(3, 2, "Requests\tTaken:%d\tStarted:%d\tEnded:%d\tAborted:%d", requestTaken, requestBegin, requestDone, requestAborted);
         }
 
+        /*
+        Checking if some taxi has come to the source position
+        */
         if (msgrcv(msgIDRequestBegin, &placeHolder, sizeof(message), 0, IPC_NOWAIT) != -1)
         {
             requestBegin++;
@@ -658,6 +701,9 @@ void bornAMaster()
             mvprintw(3, 2, "Requests\tTaken:%d\tStarted:%d\tEnded:%d\tAborted:%d", requestTaken, requestBegin, requestDone, requestAborted);
         }
 
+        /*
+        Checking if some taxi has come to the destination
+        */
         if (msgrcv(msgIDRequestDone, &placeHolder, sizeof(message), 0, IPC_NOWAIT) != -1)
         {
             requestDone++;
@@ -667,12 +713,11 @@ void bornAMaster()
             mvprintw(3, 2, "Requests\tTaken:%d\tStarted:%d\tEnded:%d\tAborted:%d", requestTaken, requestBegin, requestDone, requestAborted);
         }
 
-        /* Checking if map is to update */
+        /*
+        Checking if map is to update 
+        */
         if (updateMap)
         {
-
-            int temptaxis;
-            temptaxis = 0;
             for (a = 0; a < getMap()->SO_WIDTH; a++)
             {
                 for (b = 0; b < getMap()->SO_HEIGHT; b++)
@@ -692,21 +737,35 @@ void bornAMaster()
                         else
                         {
                             printw("%d", getMapCellAt(a, b)->currentElements);
-                            temptaxis = temptaxis + getMapCellAt(a, b)->currentElements;
                         }
                     }
                 }
             }
-            activeTaxi = temptaxis;
             updateMap = 0;
             refresh();
         }
     };
+
+    /*
+    Adding remaining messages on kickoff queue to the active taxis count
+    */
+    struct msqid_ds msgStat;
+    msgctl(msgIDKickoff, MSG_STAT, &msgStat);
+    activeTaxi = activeTaxi + msgStat.msg_qnum;
+
+    /*
+    Removing remaining messages on kickoff queue to the active taxis count
+    */
+    msgctl(msgIDTimeout, MSG_STAT, &msgStat);
+    activeTaxi = activeTaxi - msgStat.msg_qnum;
     move(h - 1, 0);
     clrtoeol();
     mvprintw(h - 1, 0, "Status: Simulation's done, sending SIGTERM to taxis and sources...");
     refresh();
 
+    /*
+    Gently terminating taxis and clients through SIGTERM
+    */
     for (a = 0; a < getMap()->SO_SOURCES; a++)
     {
         kill(getPerson(a)->processid, SIGTERM);
@@ -717,11 +776,37 @@ void bornAMaster()
         kill(getTaxi(a)->processid, SIGTERM);
         waitpid(getTaxi(a)->processid, NULL, WNOHANG);
     }
+
+    /*
+    Checking if some message on timeout queue has to be added to aborted count
+    */
+    while (msgrcv(msgIDTimeout, &placeHolder, sizeof(message), 0, IPC_NOWAIT) != -1)
+    {
+
+        if (placeHolder.x == -1)
+        {
+
+            requestAborted++;
+        }
+    }
+
+    /*
+    Checking if some client call has been untaken
+    */
+    msgctl(msgIDClientCall, MSG_STAT, &msgStat);
+    mvprintw(6 + getMap()->SO_HEIGHT, 2, "Requests not taken: %d", msgStat.msg_qnum);
+    mvprintw(3, 2, "Requests\tTaken:%d\tStarted:%d\tEnded:%d\tAborted:%d", requestTaken, requestBegin, requestDone, requestAborted);
+
+    refresh();
     move(h - 1, 0);
     clrtoeol();
     mvprintw(h - 1, 0, "Status: Simulation's done, removing ipc resources...");
     refresh();
-    semctl(getMap()->cellsSemID, 1200, IPC_RMID);
+
+    /*
+    Removing semaphores and message queues
+    */
+    semctl(getMap()->cellsSemID, getMap()->SO_HEIGHT * getMap()->SO_WIDTH, IPC_RMID);
     msgctl(msgIDKickoff, IPC_RMID, NULL);
     msgctl(msgIDTimeout, IPC_RMID, NULL);
     msgctl(msgIDTaxiCell, IPC_RMID, NULL);
@@ -730,11 +815,9 @@ void bornAMaster()
     msgctl(msgIDRequestBegin, IPC_RMID, NULL);
     msgctl(msgIDRequestDone, IPC_RMID, NULL);
 
-    int temptaxis;
-    temptaxis = 0;
-    start_color();
-    init_pair(0, COLOR_GREEN, COLOR_BLACK);
-    init_pair(1, COLOR_WHITE, COLOR_BLACK);
+    /*
+    Printing clients position
+    */
     for (a = 0; a < getMap()->SO_WIDTH; a++)
     {
         for (b = 0; b < getMap()->SO_HEIGHT; b++)
@@ -749,21 +832,19 @@ void bornAMaster()
                 if (getMapCellAt(a, b)->clientID != -1)
                 {
                     printw("S");
-                    temptaxis = temptaxis + getMapCellAt(a, b)->currentElements;
                 }
                 else
                 {
                     addch(' ');
-                    temptaxis = temptaxis + getMapCellAt(a, b)->currentElements;
                 }
             }
         }
     }
-    activeTaxi = temptaxis;
 
     move(2, 0);
     clrtoeol();
     nodelay(stdscr, FALSE);
+
     mvprintw(2, 2, "Active taxis: %d/%d\t Resurrected taxis:%d", activeTaxi, map->SO_TAXI, resurrectedTaxi);
 
     mvprintw(h - 1, 0, "Status: Simulation's done, making up the statistics...");
@@ -771,7 +852,10 @@ void bornAMaster()
     move(h - 1, 0);
     clrtoeol();
     refresh();
-    /* making so_top_cell array */
+
+    /*
+    Getting the top cells
+    */
     typedef struct _tempCell
     {
         int x, y;
@@ -800,11 +884,16 @@ void bornAMaster()
         temp->passedBy = 0;
     }
 
+    /*
+    Scanning the taxis to get the statistics
+    */
     taxi *cellsMax, *timeMax, *reqMax;
     Node *tempTaxi;
     tempTaxi = deadTaxis->first;
     cellsMax = timeMax = reqMax = getTaxi(0);
-    /* Seeking taxi who has done the longest distance*/
+    /*
+    Seeking taxi who has done the longest distance
+    */
     for (a = 0; a < getMap()->SO_TAXI; a++)
     {
         if (cellsMax->distanceDone < getTaxi(a)->distanceDone)
@@ -821,7 +910,9 @@ void bornAMaster()
         tempTaxi = tempTaxi->next;
     }
 
-    /* Seeking taxi who has done the longest time*/
+    /*
+    Seeking taxi who has done the longest time
+    */
     tempTaxi = deadTaxis->first;
     for (a = 0; a < getMap()->SO_TAXI; a++)
     {
@@ -839,7 +930,9 @@ void bornAMaster()
         tempTaxi = tempTaxi->next;
     }
 
-    /* Seeking taxi who took the highest request*/
+    /*
+    Seeking taxi who took the highest request
+    */
     tempTaxi = deadTaxis->first;
     for (a = 0; a < getMap()->SO_TAXI; a++)
     {
@@ -860,6 +953,10 @@ void bornAMaster()
     mvprintw(h - 1, 0, "Status: Source's location is shown. Press any key to show top cells.");
     refresh();
     getch();
+
+    /*
+    Showing the top cells' position
+    */
     for (a = 0; a < getMap()->SO_TOP_CELLS; a++)
     {
 
@@ -872,6 +969,9 @@ void bornAMaster()
     refresh();
     getch();
 
+    /*
+    Showing the taxis' statistics
+    */
     for (b = 0; b < getMap()->SO_HEIGHT + 2; b++)
     {
         move(b + 4, 0);
@@ -896,6 +996,9 @@ void bornAMaster()
     mvprintw(h - 1, 0, "Status: Quitting. Deallocating shared memory and SIGKILLING processes to be sure...");
     refresh();
 
+    /*
+    Killing any processes left
+    */
     for (a = 0; a < getMap()->SO_SOURCES; a++)
     {
         kill(getPerson(a)->processid, SIGKILL);
@@ -906,14 +1009,24 @@ void bornAMaster()
         kill(getTaxi(a)->processid, SIGKILL);
         waitpid(getTaxi(a)->processid, NULL, WNOHANG);
     }
+
+    /*
+    Deallocating shared memory
+    */
     shmctl(shmID, IPC_RMID, NULL);
     endwin();
 }
 
 int main(int argc, char *argv[])
 {
+    /*
+    Rand seed
+    */
     srand(time(NULL));
 
+    /*
+    Initializing ncurses
+    */
     initscr();
     curs_set(0);
     cbreak();
@@ -923,23 +1036,27 @@ int main(int argc, char *argv[])
 
     getmaxyx(stdscr, h, w);
     win = newwin(h, w, 0, 0);
+    wmove(win, 0, 0);
 
     char *configPath;
 
-    if (argc == 1)
+    if (argc == 2)
     {
-        configPath = argv[0];
+        configPath = argv[1];
     }
-    else if (argc == 0)
+    else if (argc == 1)
     {
         configPath = CONFIGFULLPATH;
     }
     else
     {
-        printf("Wrong number of parameters!\nusage: ./master pathToConfigFile\n");
+        printw("Wrong number of parameters!\nusage: ./master pathToConfigFile\n");
         exit(EXIT_FAILURE);
     }
 
+    /*
+    Getting ipc keys
+    */
     projID = rand();
     ipcKey = ftok(configPath, projID);
     ipcKeyKickoff = ftok(configPath, projID + 1);
@@ -950,8 +1067,14 @@ int main(int argc, char *argv[])
     ipcKeyRequestBegin = ftok(configPath, projID + 6);
     ipcKeyRequestDone = ftok(configPath, projID + 7);
 
-    map = mapFromConfig(CONFIGFULLPATH);
+    /*
+    Initializing map
+    */
+    mapFromConfig(configPath);
 
+    /*
+    Executing processes and starting simulation
+    */
     beFruitful();
 
     return EXIT_SUCCESS;

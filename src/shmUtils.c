@@ -1,4 +1,6 @@
-
+/*
+Library to set shm base address and easily accessing the simulation elements
+*/
 void *addrstart = -1;
 
 void setAddrstart(void *start){
@@ -24,12 +26,12 @@ void putMapInShm(masterMap *map){
 
 /*
     Allocates in shared memory the necessary space to memorize the whole structure like this:
-    || masterMap | taxi[map->SO_TAXI] | person[map->SO_SOURCES] | mapCell[map->SO_WIDTH][map->SO_HEIGHT] | taxi[map->SO_WIDTH][map->SO_HEIGHT][map->SO_CAP_MAX] ||
+    || masterMap | taxi[map->SO_TAXI] | person[map->SO_SOURCES] | mapCell[map->SO_WIDTH][map->SO_HEIGHT] ||
     Returns the semID
 */
 
 int allocateShm(int shmKey, masterMap *map){
-    return shmget(shmKey, sizeof(masterMap) + sizeof(taxi[map->SO_TAXI]) + sizeof(person[map->SO_SOURCES]) + sizeof(mapCell[map->SO_WIDTH][map->SO_HEIGHT]) + sizeof(taxi[map->SO_WIDTH][map->SO_HEIGHT][map->SO_CAP_MAX]), IPC_CREAT | 0666);
+    return shmget(shmKey, sizeof(masterMap) + sizeof(taxi[map->SO_TAXI]) + sizeof(person[map->SO_SOURCES]) + sizeof(mapCell[map->SO_WIDTH][map->SO_HEIGHT]), IPC_CREAT | 0666);
 }
 
 masterMap *getMap(){

@@ -15,7 +15,7 @@
 #include "TaxiElements.h"
 #include "BinSemaphores.h"
 
-int myNumber, shmID,
+int myNumber, shmID, duringRequest,
     msgIDKickoff,
     msgIDTimeout,
     msgIDTaxiCell,
@@ -34,6 +34,9 @@ FILE *errorLog;
 int sourceX, sourceY, destX, destY;
 alarmInsideSem = 0;
 
+/*
+Signal handler
+*/
 void signalHandler(int sigNumber)
 {
     switch (sigNumber)
@@ -47,11 +50,15 @@ void signalHandler(int sigNumber)
         break;
     }
 }
+
 int main(int argc, char *argv[])
 {
 
-    alarmCame = 0;
+    alarmCame = duringRequest = 0;
 
+    /*
+    Installing signal handlers
+    */
     struct sigaction act;
     memset(&act, 0, sizeof(act));
     act.sa_handler = signalHandler;
@@ -61,30 +68,33 @@ int main(int argc, char *argv[])
 
     errorLog = fopen("errorLog.txt", "ab+");
 
+    /*
+    Getting all necessary information for shm and setting it up
+    */
     myNumber = atoi(argv[1]);
     shmID = atoi(argv[2]);
-    msgIDKickoff = atoi(argv[3]);
-    msgIDTimeout = atoi(argv[4]);
-    msgIDTaxiCell = atoi(argv[5]);
-    msgIDClientCall = atoi(argv[6]);
-    msgIDClientTaken = atoi(argv[7]);
-    msgIDRequestBegin = atoi(argv[8]);
-    msgIDRequestDone = atoi(argv[9]);
-
     void *addrstart = shmat(shmID, NULL, 0);
+    setAddrstart(addrstart);
+    msgIDKickoff = getMap()->msgIDKickoff;
+    msgIDTimeout = getMap()->msgIDTimeout;
+    msgIDTaxiCell = getMap()->msgIDTaxiCell;
+    msgIDClientCall = getMap()->msgIDClientCall;
+    msgIDClientTaken = getMap()->msgIDClientTaken;
+    msgIDRequestBegin = getMap()->msgIDRequestBegin;
+    msgIDRequestDone = getMap()->msgIDRequestDone;
     if (addrstart == -1)
     {
-        strerror(errno);
+        fprintf(errorLog,"%s", strerror(errno));
     }
-    setAddrstart(addrstart);
     srand(getpid() % time(NULL));
 
-    myTaxiNumber = myNumber; /*ti amo <3*/
-
-    /*printf("Taxi n%d with pid %d\n", myNumber, getpid());*/
-
+    /*
+    Putting myself in shm
+    */
+    myTaxiNumber = myNumber; 
     myself = getTaxi(myNumber);
-    while(getpid()==0);
+    while (getpid() == 0)
+        ;
     myself->processid = getpid();
     myself->number = myNumber;
     myself->distanceDone = 0;
@@ -92,6 +102,9 @@ int main(int argc, char *argv[])
     myself->posX = -1;
     myself->posY = -1;
 
+    /*
+    Searching a position for myself
+    */
     int found, x, y;
     found = 0;
     goOn = 1;
@@ -133,11 +146,16 @@ int main(int argc, char *argv[])
         fflush(errorLog);
         exit(EXIT_FAILURE);
     }
+
+    /*
+    Sending message for taken position
+    */
     message positionMessage;
     positionMessage.driverID = myTaxiNumber;
     positionMessage.x =
         positionMessage.y =
             positionMessage.mtype = 1;
+
     if (msgsnd(msgIDTaxiCell, &positionMessage, sizeof(message), 0) == -1)
     {
         fprintf(errorLog, "taxi:%d\tx:%d\ty:%d sndtxicell %s\n", myTaxiNumber, myself->posX, myself->posY, strerror(errno));
@@ -148,22 +166,36 @@ int main(int argc, char *argv[])
 
     struct timespec request = {0, 1000000};
     struct timespec remaining;
+    
+    /*
+    Waiting for SIGUSR1 to kickoff the simulation
+    */
     while (goOn)
     {
         nanosleep(&request, &remaining);
     }
 
+    /*
+    Simulation begin
+    */
     taxiKickoff();
 }
 
+/*
+Function to communicate quitting
+*/
 void quitItAll()
 {
-    keepOn=0;
+    keepOn = 0;
     message killNotification;
     killNotification.driverID = myTaxiNumber;
     killNotification.x =
         killNotification.y =
             killNotification.mtype = 1;
+    if (duringRequest)
+    {
+        killNotification.x = -1;
+    }
     msgsnd(msgIDTimeout, &killNotification, sizeof(message), 0);
     reserveSem(getMap()->cellsSemID, (myself->posX * getMap()->SO_HEIGHT) + myself->posY);
     getMapCellAt(myself->posX, myself->posY)->currentElements--;
@@ -171,6 +203,10 @@ void quitItAll()
     exit(EXIT_SUCCESS);
 }
 
+/*
+Function for moving the taxi in a cell by reserving the old and new cells' semaphores
+and transitioning the current elements count
+*/
 void moveMyselfIn(int destX, int destY)
 {
     int originX, originY;
@@ -206,6 +242,9 @@ void moveMyselfIn(int destX, int destY)
     nanosleep(&request, &remaining);
 };
 
+/*
+Driving taxi alternating a movement on x and a movement on Y
+*/
 void driveTaxi(int destX, int destY)
 {
     while (!((myself->posX == destX) && (myself->posY == destY)))
@@ -215,6 +254,9 @@ void driveTaxi(int destX, int destY)
     }
 }
 
+/*
+Function to move myself on x nearer to destination
+*/
 void moveOnX(int destX, int destY)
 {
     if (!((myself->posX == destX) && (myself->posY == destY)))
@@ -235,6 +277,9 @@ void moveOnX(int destX, int destY)
     }
 }
 
+/*
+Function to move myself on y nearer to destination
+*/
 void moveOnY(int destX, int destY)
 {
     if (!((myself->posX == destX) && (myself->posY == destY)))
@@ -257,7 +302,10 @@ void moveOnY(int destX, int destY)
 void taxiKickoff()
 {
     keepOn = 1;
-
+    
+    /*
+    Sending message to notifying kickoff
+    */
     message imHere;
     imHere.driverID = myself->number;
     imHere.x =
@@ -270,13 +318,17 @@ void taxiKickoff()
         fflush(errorLog);
     };
 
-    /*Taxi si mette in attesa di richieste*/
-    while (keepOn&&!alarmCame)
+    
+    while (keepOn && !alarmCame)
     {
         if (alarmCame)
             quitItAll();
         tempTime = 0;
         sourceX = sourceY = destX = destY = -1;
+
+        /*
+        Waiting for requests
+        */
         message requestPlaceholder;
         if (msgrcv(msgIDClientCall, &requestPlaceholder, sizeof(message), 0, 0) == -1)
         {
@@ -284,6 +336,7 @@ void taxiKickoff()
             fprintf(errorLog, "taxi:%d\tx:%d\ty:%d rcvclicall %s\n", myTaxiNumber, myself->posX, myself->posY, strerror(errno));
             fflush(errorLog);
         };
+        duringRequest = 1;
         if (alarmCame)
             quitItAll();
         sourceX = getPerson(requestPlaceholder.clientID)->posX;
@@ -293,6 +346,9 @@ void taxiKickoff()
 
         requestPlaceholder.driverID = myTaxiNumber;
 
+        /*
+        Notifying that I've taken a client
+        */
         requestPlaceholder.mtype = 1;
         if (msgsnd(msgIDClientTaken, &requestPlaceholder, sizeof(message), 0) == -1)
         {
@@ -303,15 +359,26 @@ void taxiKickoff()
 
         if (alarmCame)
             quitItAll();
+        /*
+        Driving the taxi to client position
+        */
         driveTaxi(sourceX, sourceY);
         if (alarmCame)
             quitItAll();
+
+        /*
+        Checking if it has been done in a bgger time than before
+        */
         if (myself->maxTime < tempTime)
         {
             myself->maxTime = tempTime;
         }
         tempTime = 0;
         requestPlaceholder.mtype = 1;
+
+        /*
+        Notifying that I'm at client position
+        */
         if (msgsnd(msgIDRequestBegin, &requestPlaceholder, sizeof(message), 0) == -1)
         {
 
@@ -321,11 +388,19 @@ void taxiKickoff()
 
         if (alarmCame)
             quitItAll();
+        /*
+        Driving to destination
+        */
         driveTaxi(destX, destY);
         if (alarmCame)
             quitItAll();
+
         alarm(getMap()->SO_TIMEOUT);
 
+        
+        /*
+        Notifying that I'm at destination
+        */
         requestPlaceholder.mtype = 1;
         if (msgsnd(msgIDRequestDone, &requestPlaceholder, sizeof(message), 0) == -1)
         {
@@ -333,11 +408,16 @@ void taxiKickoff()
             fprintf(errorLog, "taxi:%d\tx:%d\ty:%d sndreqdon %s\n", myTaxiNumber, sourceX, sourceY, strerror(errno));
             fflush(errorLog);
         };
+        duringRequest = 0;
+
+        /*
+        Checking if it has been done in a bgger time than before
+        */
         if (myself->maxTime < tempTime)
         {
             myself->maxTime = tempTime;
         }
     }
 
-            quitItAll();
+    quitItAll();
 }
